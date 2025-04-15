@@ -11,7 +11,7 @@ from swagger_client.rest import ApiException
 
 try:
     config = swagger_client.Configuration()
-    config.host = "http://testnet.phantasma.io:5102"
+    config.host = "http://testnet.phantasma.info"
     config.verify_ssl = False
     client = swagger_client.ApiClient(config)
     api = AccountApi(client)

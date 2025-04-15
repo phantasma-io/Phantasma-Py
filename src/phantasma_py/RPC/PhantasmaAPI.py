@@ -4,7 +4,7 @@ import json
 class PhantasmaAPI:
 	base_url = None 
 
-	def __init__(self, base_url="https://phantasma.io"):
+	def __init__(self, base_url="https://phantasma.info"):
 		self.base_url = base_url
 		self.session = requests.Session()
 		self.session.headers.update({"Content-Type": "application/json"})

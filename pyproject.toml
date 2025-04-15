@@ -1,0 +1,21 @@
+[project]
+name = "phantasma-sdk-py"
+version = "1.0.10"
+description = "Phantasma SDK for Python"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "certifi>=14.05.14",
+    "six>=1.10",
+    "python_dateutil>=2.5.3",
+    "setuptools>=21.0.0",
+    "urllib3>=1.15.1",
+    "requests>=2.18.4",
+    "base58>=2.1.1",
+    "cryptography>=41.0.7",
+    "numpy>=1.26.2",
+    "ecpy>=1.2.5"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/phantasma-io/Phantasma-Py"

@@ -4,7 +4,7 @@ from phantasma_py.API.API import AccountApi
 
 class TestRpc(unittest.TestCase):
     def test_rpc_working(self):
-        apiURL = "https://bp1.phantasma.io"
+        apiURL = "https://pharpc1.phantasma.info"
         config = Configuration()
         config.host = apiURL
         api = ApiClient(configuration=config)
