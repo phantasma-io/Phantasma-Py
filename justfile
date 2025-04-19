@@ -8,6 +8,10 @@ PP:="PYTHONPATH=$(pwd)/src"
 test:
     {{PP}} uv run pytest
 
-[group('run')]
-test:
-    {{PP}} uv run pytest
+[group('build')]
+build:
+    uv build
+
+[group('publish')]
+publish:
+    uv publish
