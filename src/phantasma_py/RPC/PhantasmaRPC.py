@@ -18,8 +18,18 @@ class PhantasmaRPC:
 		}
 		response = requests.post(self.url, data=json.dumps(payload), headers=headers).json()
 
-		#assert response["jsonrpc"]
-		#assert response["id"] == 1, response
+		if "jsonrpc" not in response or response["jsonrpc"] != "2.0":
+			raise Exception("Invalid RPC response: missing or incorrect 'jsonrpc' version")
+
+		if "id" not in response or response["id"] != 1:
+			raise Exception("Invalid RPC response: 'id' mismatch or missing")
+
+		if "error" in response:
+			raise Exception(response["error"].get("Message", "Unknown RPC error"))
+
+		if "result" not in response:
+			raise Exception("Malformed RPC response: missing 'result' field")
+
 		return response["result"]
 
 

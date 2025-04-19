@@ -62,7 +62,7 @@ class ScriptBuilder():
         Returns:
             None
         '''
-        
+
         self.data = ""
         self._labelLocations = []
         self._jumpLocations = []
@@ -194,8 +194,11 @@ class ScriptBuilder():
             typeLoaded = True
 
         # Number
-        if ((isinstance(obj, int)) or (isinstance(obj, float))):
-            self.EmitLoadVarInt(reg, obj)
+        # TODO implement correct bigint binary serialization
+        if isinstance(obj, int):
+            # self.EmitLoadVarInt(reg, obj) # Incorrect
+            data = self.RawString(str(obj))
+            self.EmitLoadBytes(reg, data, VMType.String)
             typeLoaded = True
 
         # Timestamp
@@ -630,4 +633,3 @@ class ScriptBuilder():
         Returns:
             None
         '''
-           
