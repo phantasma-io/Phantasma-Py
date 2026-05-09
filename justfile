@@ -39,4 +39,7 @@ typecheck:
 
 [group('publish')]
 publish:
-    uv publish
+    rm -rf dist
+    test -z "$(git status --porcelain)" || (git status --short && false)
+    just check
+    uv publish dist/*
