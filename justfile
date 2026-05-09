@@ -42,4 +42,4 @@ publish:
     rm -rf dist
     test -z "$(git status --porcelain)" || (git status --short && false)
     just check
-    uv publish dist/*
+    UV_PUBLISH_USERNAME="$(python -c 'import configparser, pathlib; c=configparser.RawConfigParser(); c.read(pathlib.Path.home()/".pypirc"); print(c["pypi"]["username"])')" UV_PUBLISH_PASSWORD="$(python -c 'import configparser, pathlib; c=configparser.RawConfigParser(); c.read(pathlib.Path.home()/".pypirc"); print(c["pypi"]["password"])')" uv publish dist/*
