@@ -1,21 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
 [project]
 name = "phantasma-sdk-py"
-version = "1.0.11"
-description = "Phantasma SDK for Python"
+version = "2.0.0"
+description = "Typed Python SDK for Phantasma RPC, VM scripts, transactions, and Carbon wire formats"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Phantasma", email = "info@phantasma.info" }]
 dependencies = [
-    "certifi>=14.05.14",
-    "six>=1.10",
-    "python_dateutil>=2.5.3",
-    "setuptools>=21.0.0",
-    "urllib3>=1.15.1",
-    "requests>=2.18.4",
-    "base58>=2.1.1",
-    "cryptography>=41.0.7",
-    "numpy>=1.26.2",
-    "ecpy>=1.2.5"
+    "cryptography>=42",
+    "requests>=2.32",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2",
+    "mypy>=1.10",
+    "pytest>=8.2",
+    "pytest-cov>=5",
+    "ruff>=0.5",
+    "types-requests>=2.32",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/phantasma-io/Phantasma-Py"
+Homepage = "https://github.com/phantasma-io/Phantasma-Py"
+Repository = "https://github.com/phantasma-io/Phantasma-Py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/phantasma_py"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["phantasma_py"]
