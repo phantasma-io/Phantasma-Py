@@ -1,7 +1,7 @@
 # Carbon
 
-`phantasma_py.carbon` implements the current Carbon SDK contract shared with the
-C#, TypeScript, C++, and Go SDKs.
+`phantasma_py.carbon` implements the Carbon wire formats and helper structures
+shared with the C#, TypeScript, C++, and Go SDKs.
 
 ## Wire Format
 

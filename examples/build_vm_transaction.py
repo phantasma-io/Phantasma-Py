@@ -1,4 +1,4 @@
-"""Build and sign a classic VM transaction without broadcasting it."""
+"""Build and sign a VM script transaction without broadcasting it."""
 
 from __future__ import annotations
 

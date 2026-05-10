@@ -76,7 +76,7 @@ def test_vm_big_integer_round_trip_edges(value: int) -> None:
 
 
 def test_vm_big_integer_matches_gen2_csharp_binary_fixtures() -> None:
-    # The Gen2 C# fixture checks both classic VM BigInteger encodings:
+    # The Gen2 C# fixture checks both VM BigInteger encodings:
     # padded BinaryWriter/VMObject storage and unpadded ScriptBuilder LOAD data.
     fixture = Path("tests/fixtures/gen2_csharp_vm_bigint_binary.tsv")
     for line in fixture.read_text().splitlines():

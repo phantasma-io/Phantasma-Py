@@ -23,7 +23,7 @@ SCRIPT_BUILDER_FIXTURE_SHA256 = "81907a6b1df095b84599d8f8d709623e20dadeca2082ab9
 
 def script_vector_rows() -> list[tuple[str, str, str, str]]:
     rows: list[tuple[str, str, str, str]] = []
-    for line in Path("tests/fixtures/classic_script_builder_vectors.tsv").read_text().splitlines():
+    for line in Path("tests/fixtures/vm_script_builder_vectors.tsv").read_text().splitlines():
         if not line or line.startswith("case_id\t"):
             continue
         case_id, source, expected_hex, notes = line.split("\t")
@@ -32,7 +32,7 @@ def script_vector_rows() -> list[tuple[str, str, str, str]]:
 
 
 def test_script_builder_fixture_hash_is_locked() -> None:
-    data = Path("tests/fixtures/classic_script_builder_vectors.tsv").read_bytes()
+    data = Path("tests/fixtures/vm_script_builder_vectors.tsv").read_bytes()
     assert sha256(data).hexdigest() == SCRIPT_BUILDER_FIXTURE_SHA256
 
 

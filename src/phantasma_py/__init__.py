@@ -1,7 +1,8 @@
-"""Modern Python SDK for Phantasma.
+"""Python SDK for the Phantasma blockchain with support for the Phoenix chain update.
 
-The package exposes Pythonic snake_case modules while keeping the project import
-namespace stable as `phantasma_py`.
+The package provides JSON-RPC access, transaction building and signing, VM script
+helpers, Ed25519 keys/signatures, and Carbon wire-format support while keeping
+the project import namespace stable as `phantasma_py`.
 """
 
 from .carbon import (
@@ -298,4 +299,4 @@ __all__ = [
     "vm_type_name",
 ]
 
-__version__ = "2.0.1"
+__version__ = "2.0.2"

@@ -18,7 +18,7 @@ def test_base58_round_trip_preserves_leading_zeroes() -> None:
     ],
 )
 def test_wif_and_address_vectors(wif: str, address: str) -> None:
-    # These are existing Python SDK vectors and must remain stable after the rewrite.
+    # These Python SDK WIF/address vectors must remain stable across SDK changes.
     keys = PhantasmaKeys.from_wif(wif)
     assert keys.to_wif() == wif
     assert keys.address.text == address

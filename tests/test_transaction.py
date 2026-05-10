@@ -8,13 +8,13 @@ from phantasma_py.vm import ScriptBuilder
 
 
 def test_default_sdk_payload_matches_package_version() -> None:
-    # The classic transaction default payload is visible on-chain, so it must
+    # The VM script transaction default payload is visible on-chain, so it must
     # move with the package version instead of retaining a stale release string.
     assert f"PY-SDK-v{__version__}".encode() == SDK_PAYLOAD
 
 
-def test_classic_transaction_sign_and_round_trip() -> None:
-    # Classic transaction bytes are the signing payload for VM script broadcasts.
+def test_vm_script_transaction_sign_and_round_trip() -> None:
+    # VM script transaction bytes are the signing payload for VM script broadcasts.
     keys = PhantasmaKeys.from_wif("KxMn2TgXukYaNXx7tEdjh7qB2YaMgeuKy47j4rvKigHhBuZWeP3r")
     script = ScriptBuilder.begin().call_interop("Runtime.Time").end_script()
     tx = Transaction("mainnet", "main", script, 1_754_000_000)

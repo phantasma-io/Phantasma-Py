@@ -1,4 +1,4 @@
-# Classic VM Scripts And Transactions
+# VM Scripts And Transactions
 
 `phantasma_py.vm` and `phantasma_py.transaction` cover the script-based VM
 transaction flow used by the current RPC.

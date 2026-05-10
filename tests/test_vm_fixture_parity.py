@@ -5,7 +5,7 @@ from phantasma_py.binary import BinaryWriter, big_int_to_vm_bytes, vm_bytes_to_b
 from phantasma_py.errors import SerializationError
 from phantasma_py.vm import ScriptBuilder, VMObject, VMType
 
-CLASSIC_TYPE_NAMES = {
+VM_TYPE_NAMES = {
     VMType.NONE: "None",
     VMType.STRUCT: "Struct",
     VMType.BYTES: "Bytes",
@@ -148,7 +148,7 @@ def test_vmobject_array_type_matches_gen2_csharp_fixtures() -> None:
     for parts in _fixture_rows("tests/fixtures/gen2_csharp_vmobject_arraytype.tsv"):
         case_id, source_kind, _source_type, payload, expected = parts
         actual = _object_from_fixture(source_kind, payload).array_type()
-        assert CLASSIC_TYPE_NAMES[actual] == expected, case_id
+        assert VM_TYPE_NAMES[actual] == expected, case_id
 
 
 def test_vmobject_serde_matches_gen2_csharp_fixtures() -> None:
@@ -158,7 +158,7 @@ def test_vmobject_serde_matches_gen2_csharp_fixtures() -> None:
         assert obj.to_bytes().hex() == serialized_hex, case_id
 
         roundtrip = VMObject.from_bytes(bytes.fromhex(serialized_hex))
-        assert CLASSIC_TYPE_NAMES[roundtrip.type] == roundtrip_type, case_id
+        assert VM_TYPE_NAMES[roundtrip.type] == roundtrip_type, case_id
         assert _object_descriptor(roundtrip) == descriptor, case_id
 
 
@@ -172,7 +172,7 @@ def test_vmobject_cast_struct_matches_gen2_csharp_fixtures() -> None:
         )
         if outcome == "ok":
             assert isinstance(result, VMObject), case_id
-            assert CLASSIC_TYPE_NAMES[result.type] == expected_type, case_id
+            assert VM_TYPE_NAMES[result.type] == expected_type, case_id
             assert _object_descriptor(result) == descriptor, case_id
         else:
             assert isinstance(result, Exception), case_id

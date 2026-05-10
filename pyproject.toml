@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "phantasma-sdk-py"
-version = "2.0.1"
-description = "Typed Python SDK for Phantasma RPC, VM scripts, transactions, and Carbon wire formats"
+version = "2.0.2"
+description = "Typed Python SDK for the Phantasma blockchain with support for the Phoenix chain update"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

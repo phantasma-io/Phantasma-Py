@@ -1,6 +1,6 @@
-"""Classic Phantasma VM binary reader/writer.
+"""Phantasma VM binary reader/writer.
 
-This module is intentionally separate from `carbon`: classic transactions and
+This module is intentionally separate from `carbon`: VM script transactions and
 VM scripts use variable-length integer prefixes, while Carbon uses fixed
 little-endian array lengths and compact Int256 encoding.
 """
@@ -17,7 +17,7 @@ MAX_ARRAY_SIZE = 0x1000000
 
 @dataclass(slots=True)
 class BinaryWriter:
-    """Append-only writer for classic Phantasma wire primitives."""
+    """Append-only writer for Phantasma VM wire primitives."""
 
     _buffer: bytearray = field(default_factory=bytearray)
 
@@ -76,7 +76,7 @@ class BinaryWriter:
 
 @dataclass(slots=True)
 class BinaryReader:
-    """Bounds-checked reader for classic Phantasma wire primitives."""
+    """Bounds-checked reader for Phantasma VM wire primitives."""
 
     _data: bytes
     _offset: int = 0

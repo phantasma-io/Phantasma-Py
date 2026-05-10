@@ -1,6 +1,6 @@
 """Carbon wire-format support.
 
-Carbon uses a different binary contract from classic Phantasma VM scripts:
+Carbon uses a different binary contract from Phantasma VM scripts:
 fixed-width little-endian integers, zero-terminated strings, and compact signed
 Int256 values. The implementation below mirrors the current Go/C#/TS/C++ SDK
 contract and keeps all parsing bounds-checked.

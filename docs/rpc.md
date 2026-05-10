@@ -36,5 +36,5 @@ RPC objects are decoded into dataclasses such as `AccountResult`,
 `TokenResult`, `TokenSeriesResult`, `BlockResult`, and `TransactionResult`.
 Nested arrays are decoded as typed dataclass instances, not raw dictionaries.
 
-`ScriptResult.decode_result()` and `decode_results(index)` parse classic VM
-object bytes returned by script invocation endpoints.
+`ScriptResult.decode_result()` and `decode_results(index)` parse VM object bytes
+returned by script invocation endpoints.

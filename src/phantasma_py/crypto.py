@@ -120,7 +120,7 @@ class Address:
         return prefix + encode_base58(self.data)
 
     def prefixed_bytes(self) -> bytes:
-        """Classic serialization form: var-bytes length prefix plus address."""
+        """VM wire serialization form: var-bytes length prefix plus address."""
 
         writer = BinaryWriter()
         writer.write_var_bytes(self.data)
@@ -155,7 +155,7 @@ class Hash:
     def difficulty(self) -> int:
         """Return Phantasma proof-of-work difficulty.
 
-        Classic Phantasma SDKs treat hash bytes as a little-endian integer for
+        Phantasma VM transaction tooling treats hash bytes as a little-endian integer for
         PoW. This intentionally matches the Go/TypeScript `GetDifficulty`
         helpers and the validator's `hash.GetDifficulty()` check.
         """

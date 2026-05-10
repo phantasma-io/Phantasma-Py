@@ -86,7 +86,7 @@ class VMType(IntEnum):
 
 @dataclass(frozen=True, slots=True)
 class VMObject:
-    """Decoded classic VM object."""
+    """Decoded VM object."""
 
     type: VMType = VMType.NONE
     data: Any = None

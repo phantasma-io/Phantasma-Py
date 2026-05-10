@@ -1,10 +1,14 @@
 # Phantasma Python SDK
 
-Typed Python SDK for Phantasma RPC, classic VM scripts and transactions, Ed25519
-keys/signatures, and Carbon wire formats.
+Typed Python SDK for the Phantasma blockchain with support for the Phoenix chain
+update.
 
-The public surface follows the current C#, TypeScript, C++, and Go SDK behavior
-while using Python naming, dataclasses, exceptions, and type hints.
+The package provides JSON-RPC access, transaction building and signing, VM script
+helpers, Ed25519 keys/signatures, and Carbon wire-format support.
+
+The public API uses Python naming conventions, dataclasses, exceptions, and type
+hints. Fixture tests lock shared VM and Carbon wire formats against reference SDK
+vectors.
 
 ## Requirements
 
@@ -30,10 +34,10 @@ just check
 ## Modules
 
 - `phantasma_py.crypto`: addresses, hashes, WIF keys, Ed25519 signatures
-- `phantasma_py.vm`: classic VM objects, opcodes, and `ScriptBuilder`
-- `phantasma_py.transaction`: classic script transaction serialization/signing
+- `phantasma_py.vm`: VM objects, opcodes, and `ScriptBuilder`
+- `phantasma_py.transaction`: VM script transaction serialization/signing
 - `phantasma_py.rpc`: JSON-RPC client and typed response dataclasses
-- `phantasma_py.carbon`: Carbon primitives, VM schemas, module call args, token builders, and tx messages
+- `phantasma_py.carbon`: Carbon primitives, VM schemas, module call args, token builders, and transaction messages
 
 ## RPC
 
@@ -64,7 +68,7 @@ assert signature.verify(b"message", [keys.address])
 Address parsing rejects malformed Base58/checksum data. `Address.from_text("NULL")`
 and `Address.null()` produce the system null address.
 
-## Classic VM Scripts
+## VM Scripts
 
 ```python
 from phantasma_py.crypto import Address, PhantasmaKeys
@@ -85,7 +89,7 @@ script = (
 `end_script_with_error()` returns `(script, error)` for callers that prefer an
 explicit checked path.
 
-## Classic Transactions
+## VM Script Transactions
 
 ```python
 from phantasma_py.crypto import PhantasmaKeys

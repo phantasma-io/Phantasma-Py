@@ -1,4 +1,4 @@
-"""Classic Phantasma transaction support."""
+"""Phantasma VM script transaction support."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ from dataclasses import dataclass, field
 from .binary import BinaryReader, BinaryWriter
 from .crypto import Ed25519Signature, Hash, PhantasmaKeys, SignatureKind
 
-SDK_PAYLOAD = b"PY-SDK-v2.0.1"
+SDK_PAYLOAD = b"PY-SDK-v2.0.2"
 
 
 @dataclass(slots=True)
 class Transaction:
-    """Classic VM transaction used by script-based RPC endpoints."""
+    """VM script transaction used by script-based RPC endpoints."""
 
     nexus_name: str
     chain_name: str
