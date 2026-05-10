@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import IntEnum
 from typing import Any
 
-from .binary import BinaryReader, BinaryWriter, big_int_to_vm_bytes
+from .binary import BinaryReader, BinaryWriter, _big_int_to_csharp_bytes, vm_bytes_to_big_int
 from .crypto import Address
 from .errors import BuilderError, SerializationError
 
@@ -110,7 +111,7 @@ class VMObject:
         if vm_type == VMType.BYTES:
             return cls(vm_type, reader.read_var_bytes())
         if vm_type == VMType.ENUM:
-            return cls(vm_type, reader.read_u32_le())
+            return cls(vm_type, reader.read_u8())
         if vm_type == VMType.NUMBER:
             return cls(vm_type, reader.read_big_integer())
         if vm_type == VMType.STRING:
@@ -118,7 +119,10 @@ class VMObject:
         if vm_type == VMType.TIMESTAMP:
             return cls(vm_type, reader.read_u32_le())
         if vm_type == VMType.OBJECT:
-            return cls(vm_type, reader.read_var_bytes())
+            payload = reader.read_var_bytes()
+            if len(payload) == 35 and payload[0] == 34:
+                return cls(vm_type, payload[1:])
+            return cls(VMType.BYTES, payload)
         if vm_type == VMType.STRUCT:
             count = reader.read_var_uint()
             items: dict[VMObject, VMObject] = {}
@@ -132,6 +136,13 @@ class VMObject:
     def as_number(self) -> int:
         if self.type == VMType.NUMBER:
             return int(self.data)
+        # Gen2 VMObject.AsNumber treats raw byte payloads as signed
+        # little-endian integers and 32-byte Object payloads as unsigned
+        # hash-backed integers. Other Object payloads remain non-numeric.
+        if self.type == VMType.BYTES:
+            return vm_bytes_to_big_int(bytes(self.data))
+        if self.type == VMType.OBJECT and len(bytes(self.data)) == 32:
+            return int.from_bytes(bytes(self.data), "little", signed=False)
         if self.type == VMType.BOOL:
             return 1 if self.data else 0
         if self.type in {VMType.STRING, VMType.ENUM, VMType.TIMESTAMP}:
@@ -151,7 +162,130 @@ class VMObject:
             return str(self.data)
         if self.type == VMType.NONE:
             return "Null"
+        if self.type == VMType.STRUCT:
+            if self.array_type() == VMType.NUMBER:
+                payload = bytearray()
+                for index in range(len(self.data)):
+                    value = self.data.get(VMObject(VMType.NUMBER, index))
+                    if value is None:
+                        raise SerializationError("invalid number array struct")
+                    code_unit = value.as_number()
+                    if code_unit < 0 or code_unit > 0xFFFF:
+                        raise SerializationError("UTF-16 code unit out of range")
+                    payload.extend(code_unit.to_bytes(2, "little"))
+                return bytes(payload).decode("utf-16-le")
+            return base64.b64encode(self.as_bytes()).decode("ascii")
         raise SerializationError(f"cannot convert {self.type.name} to string")
+
+    def as_bytes(self) -> bytes:
+        if self.type == VMType.NONE:
+            raise SerializationError("cannot convert NONE to bytes")
+        if self.type == VMType.STRING:
+            return str(self.data).encode("utf-8")
+        if self.type in {VMType.BYTES, VMType.OBJECT}:
+            return bytes(self.data)
+        if self.type == VMType.BOOL:
+            return b"\x01" if self.data else b"\x00"
+        if self.type in {VMType.ENUM, VMType.TIMESTAMP}:
+            return int(self.data).to_bytes(4, "little", signed=False)
+        if self.type == VMType.NUMBER:
+            from .binary import big_int_to_vm_bytes
+
+            return big_int_to_vm_bytes(int(self.data))
+        if self.type == VMType.STRUCT:
+            return self.to_bytes()
+        raise SerializationError(f"cannot convert {self.type.name} to bytes")
+
+    def as_bool(self) -> bool:
+        if self.type == VMType.BOOL:
+            return bool(self.data)
+        if self.type == VMType.BYTES and len(bytes(self.data)) == 1:
+            return bytes(self.data)[0] != 0
+        if self.type == VMType.NUMBER:
+            return int(self.data) != 0
+        raise SerializationError(f"cannot convert {self.type.name} to bool")
+
+    def cast_to(self, target: VMType) -> VMObject:
+        if self.type == target:
+            return self
+        if target == VMType.NONE:
+            return VMObject(VMType.NONE)
+        if target == VMType.STRING:
+            return VMObject(VMType.STRING, self.as_string())
+        if target == VMType.BYTES:
+            return VMObject(VMType.BYTES, self.as_bytes())
+        if target == VMType.NUMBER:
+            return VMObject(VMType.NUMBER, self.as_number())
+        if target == VMType.BOOL:
+            return VMObject(VMType.BOOL, self.as_bool())
+        if target == VMType.STRUCT:
+            if self.type == VMType.STRING:
+                units = str(self.data).encode("utf-16-le")
+                items: dict[VMObject, VMObject] = {}
+                for index in range(0, len(units), 2):
+                    code_unit = int.from_bytes(units[index : index + 2], "little")
+                    items[VMObject(VMType.NUMBER, index // 2)] = VMObject(VMType.NUMBER, code_unit)
+                return VMObject(VMType.STRUCT, items)
+            if self.type == VMType.OBJECT:
+                return self
+            raise SerializationError(f"invalid cast: {self.type.name.title()} to Struct")
+        raise SerializationError(f"invalid cast: {self.type.name.title()} to {target.name.title()}")
+
+    def array_type(self) -> VMType:
+        if self.type != VMType.STRUCT:
+            return VMType.NONE
+        detected: VMType | None = None
+        for index in range(len(self.data)):
+            value = self.data.get(VMObject(VMType.NUMBER, index))
+            if value is None:
+                return VMType.NONE
+            if detected is not None and detected != value.type:
+                return VMType.NONE
+            detected = value.type
+        return detected or VMType.NONE
+
+    def to_bytes(self) -> bytes:
+        writer = BinaryWriter()
+        self.write(writer)
+        return writer.bytes()
+
+    def write(self, writer: BinaryWriter) -> None:
+        writer.write_u8(self.type)
+        if self.type == VMType.NONE:
+            return
+        if self.type == VMType.STRUCT:
+            writer.write_var_uint(len(self.data))
+            for key, value in self.data.items():
+                key.write(writer)
+                value.write(writer)
+            return
+        if self.type == VMType.BYTES:
+            writer.write_var_bytes(bytes(self.data))
+            return
+        if self.type == VMType.OBJECT:
+            object_writer = BinaryWriter()
+            object_writer.write_var_bytes(bytes(self.data))
+            writer.write_var_bytes(object_writer.bytes())
+            return
+        if self.type == VMType.NUMBER:
+            writer.write_big_integer(int(self.data))
+            return
+        if self.type == VMType.STRING:
+            writer.write_string(str(self.data))
+            return
+        if self.type == VMType.TIMESTAMP:
+            writer.write_u32_le(int(self.data))
+            return
+        if self.type == VMType.BOOL:
+            writer.write_bool(bool(self.data))
+            return
+        if self.type == VMType.ENUM:
+            value = int(self.data)
+            if value < 0 or value > 0xFF:
+                raise SerializationError("enum value exceeds one byte")
+            writer.write_u8(value)
+            return
+        raise SerializationError(f"unsupported VM object type: {self.type}")
 
 
 class ScriptBuilder:
@@ -246,12 +380,18 @@ class ScriptBuilder:
         return self.emit_load(reg, b"\x01" if value else b"\x00", VMType.BOOL)
 
     def emit_load_number(self, reg: int, value: int) -> ScriptBuilder:
-        return self.emit_load(reg, big_int_to_vm_bytes(value), VMType.NUMBER)
+        # Gen2 ScriptBuilder emits normal C# BigInteger bytes here. This must
+        # stay separate from BinaryWriter/VMObject's padded VM BigInteger
+        # storage or transaction scripts drift from the reference SDKs.
+        return self.emit_load(reg, _big_int_to_csharp_bytes(value), VMType.NUMBER)
 
     def emit_load_time(self, reg: int, value: datetime) -> ScriptBuilder:
         if value.tzinfo is None:
             value = value.replace(tzinfo=UTC)
-        return self.emit_load(reg, int(value.timestamp()).to_bytes(8, "little"), VMType.TIMESTAMP)
+        unix_seconds = int(value.timestamp())
+        if unix_seconds < 0 or unix_seconds > 0xFFFF_FFFF:
+            return self._fail(f"timestamp out of VM uint32 range: {unix_seconds}")
+        return self.emit_load(reg, unix_seconds.to_bytes(4, "little"), VMType.TIMESTAMP)
 
     def emit_move(self, src_reg: int, dst_reg: int) -> ScriptBuilder:
         return self.emit(Opcode.MOVE)._byte(src_reg)._byte(dst_reg)

@@ -138,28 +138,30 @@ class BinaryReader:
 
 
 def big_int_to_vm_bytes(value: int) -> bytes:
-    """Encode a signed integer like C# `BigInteger.ToByteArray()`."""
+    """Encode a signed integer like Gen2 VM `ToSignedByteArray()`."""
+
+    # BinaryWriter/VMObject numbers use Phantasma's Gen2 padded VM integer
+    # storage. ScriptBuilder LOAD uses the unpadded C# bytes directly, so keep
+    # this helper dedicated to persisted/serialized VM BigInteger values.
+    raw = _big_int_to_csharp_bytes(value)
+    if value < 0:
+        if len(raw) == 1:
+            raw += b"\xff\xff"
+        elif raw[-1] == 0xFF:
+            raw += b"\xff"
+    elif raw[-1] != 0x00:
+        raw += b"\x00"
+    return raw
+
+
+def _big_int_to_csharp_bytes(value: int) -> bytes:
+    """Return normal C# `BigInteger.ToByteArray()` bytes, little-endian signed."""
 
     if value == 0:
         return b"\x00"
-
-    # Search the shortest little-endian signed width that round-trips. The
-    # values used by VM scripts are small enough that this keeps the logic
-    # simple and avoids subtle sign-bit bugs.
-    for width in range(1, 129):
-        try:
-            raw = value.to_bytes(width, "little", signed=True)
-        except OverflowError:
-            continue
-        if int.from_bytes(raw, "little", signed=True) == value:
-            while len(raw) > 1:
-                trim_positive = raw[-1] == 0x00 and raw[-2] & 0x80 == 0
-                trim_negative = raw[-1] == 0xFF and raw[-2] & 0x80 != 0
-                if not (trim_positive or trim_negative):
-                    break
-                raw = raw[:-1]
-            return raw
-    raise SerializationError("integer is too large for VM encoding")
+    bit_count = value.bit_length() + 1 if value > 0 else (~value).bit_length() + 1
+    width = max(1, (bit_count + 7) // 8)
+    return value.to_bytes(width, "little", signed=True)
 
 
 def vm_bytes_to_big_int(data: bytes) -> int:

@@ -1,0 +1,31 @@
+# source.repo=Phantasma_Gen2
+# source.commit=30f1afdc26d917d7dc8e82e2e0a9956d5b2e0b37
+# generated.utc=2026-03-16T21:26:25.1433671+00:00
+# source.files=Phantasma.Core/src/Utils/IOUtils.cs;Phantasma.Core/src/Numerics/BigIntegerExtension.cs;Phantasma.Core/src/Domain/VM/VMObject.cs;Phantasma.Business/src/VM/Utils/ScriptBuilder.cs;Phantasma.Business/src/VM/ScriptContext.cs;Phantasma.Business/src/VM/VirtualMachine.cs;Phantasma.Business/src/Blockchain/VM/GasMachine.cs
+case_id	op	a	b	outcome	value	exception_type	exception_category	exception_message
+add_pos_neg	ADD	42	-17	ok	25
+add_huge	ADD	123098123049830982903580234959875213840923849203758942357834091	4294967296	ok	123098123049830982903580234959875213840923849203758946652801387
+sub_pos_neg	SUB	42	-17	ok	59
+sub_huge	SUB	123098123049830982903580234959875213840923849203758942357834091	4294967296	ok	123098123049830982903580234959875213840923849203758938062866795
+mul_neg	MUL	-42	17	ok	-714
+mul_huge	MUL	4294967296	4294967296	ok	18446744073709551616
+div_even	DIV	144	12	ok	12
+div_negative	DIV	-9	2	ok	-4
+div_zero	DIV	5	0	exception		DivideByZeroException	divide_by_zero	Attempted to divide by zero.
+mod_negative	MOD	-5	2	ok	-1
+mod_zero	MOD	5	0	exception		DivideByZeroException	divide_by_zero	Attempted to divide by zero.
+shl_small	SHL	1	5	ok	32
+shl_word	SHL	1	32	ok	4294967296
+shl_negative_count	SHL	1	-1	ok	0
+shl_count_overflow	SHL	1	2147483648	exception		OverflowException	int32_overflow	Arithmetic operation resulted in an overflow.
+shr_small	SHR	32	3	ok	4
+shr_negative_value	SHR	-7	1	ok	-4
+shr_negative_count	SHR	8	-2	ok	32
+shr_count_overflow	SHR	8	2147483648	exception		OverflowException	int32_overflow	Arithmetic operation resulted in an overflow.
+min_basic	MIN	42	-17	ok	-17
+max_basic	MAX	42	-17	ok	42
+pow_zero	POW	123	0	ok	1
+pow_basic	POW	3	3	ok	27
+pow_large	POW	2	100	ok	1267650600228229401496703205376
+pow_negative_exponent	POW	123	-1	exception		ArgumentOutOfRangeException	negative_exponent	The number must be greater than or equal to zero. (Parameter 'exponent')
+pow_exponent_overflow	POW	2	2147483648	exception		OverflowException	int32_overflow	Arithmetic operation resulted in an overflow.

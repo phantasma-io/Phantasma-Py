@@ -1,0 +1,16 @@
+# source.repo=Phantasma_Gen2
+# source.commit=30f1afdc26d917d7dc8e82e2e0a9956d5b2e0b37
+# generated.utc=2026-03-16T21:26:25.1433671+00:00
+# source.files=Phantasma.Core/src/Utils/IOUtils.cs;Phantasma.Core/src/Numerics/BigIntegerExtension.cs;Phantasma.Core/src/Domain/VM/VMObject.cs;Phantasma.Business/src/VM/Utils/ScriptBuilder.cs;Phantasma.Business/src/VM/ScriptContext.cs;Phantasma.Business/src/VM/VirtualMachine.cs;Phantasma.Business/src/Blockchain/VM/GasMachine.cs
+case_id	value	outcome	int_value	exception_type	exception_category	exception_message
+neg_2147483649	-2147483649	exception		OverflowException	int32_overflow	Value was either too large or too small for an Int32.
+neg_2147483648	-2147483648	ok	-2147483648
+neg_2147483647	-2147483647	ok	-2147483647
+neg_1	-1	ok	-1
+0	0	ok	0
+1	1	ok	1
+2147483646	2147483646	ok	2147483646
+2147483647	2147483647	ok	2147483647
+2147483648	2147483648	exception		OverflowException	int32_overflow	Arithmetic operation resulted in an overflow.
+4294967296	4294967296	exception		OverflowException	int32_overflow	Value was either too large or too small for an Int32.
+neg_4294967296	-4294967296	exception		OverflowException	int32_overflow	Value was either too large or too small for an Int32.

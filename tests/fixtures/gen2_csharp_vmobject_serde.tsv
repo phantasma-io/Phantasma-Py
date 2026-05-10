@@ -1,0 +1,14 @@
+# source.repo=Phantasma_Gen2
+# source.commit=30f1afdc26d917d7dc8e82e2e0a9956d5b2e0b37
+# generated.utc=2026-03-16T21:26:25.1433671+00:00
+# source.files=Phantasma.Core/src/Utils/IOUtils.cs;Phantasma.Core/src/Numerics/BigIntegerExtension.cs;Phantasma.Core/src/Domain/VM/VMObject.cs;Phantasma.Business/src/VM/Utils/ScriptBuilder.cs;Phantasma.Business/src/VM/ScriptContext.cs;Phantasma.Business/src/VM/VirtualMachine.cs;Phantasma.Business/src/Blockchain/VM/GasMachine.cs
+case_id	source_kind	source_type	payload	serialized_hex	roundtrip_type	roundtrip_descriptor
+number_number	number	Number	128	03028000	Number	Number:128
+bool_bool	bool	Bool	true	0601	Bool	Bool:true
+bytes_bytes	bytes	Bytes	68656c6c6f	020568656c6c6f	Bytes	Bytes:68656c6c6f
+string_string	string	String	hello	040568656c6c6f	String	String:hello
+enum_enum	enum	Enum	42	072a	Enum	Enum:42
+timestamp_timestamp	timestamp	Timestamp	1234567890	05d2029649	Timestamp	Timestamp:1234567890
+object_object	object	Object	00000000000000000000000000000000000000000000000000000000000000000000	08232200000000000000000000000000000000000000000000000000000000000000000000	Object	Object.Address:00000000000000000000000000000000000000000000000000000000000000000000
+object_object	object	Object	fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0	082120fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0	Bytes	Bytes:20fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0
+struct_struct	struct	Struct	struct	010204046e616d6504036e656f0405636f756e7403020700	Struct	Struct:010204046e616d6504036e656f0405636f756e7403020700

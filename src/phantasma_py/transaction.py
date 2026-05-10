@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from .binary import BinaryReader, BinaryWriter
 from .crypto import Ed25519Signature, Hash, PhantasmaKeys, SignatureKind
 
-SDK_PAYLOAD = b"PY-SDK-v2.0.0"
+SDK_PAYLOAD = b"PY-SDK-v2.0.1"
 
 
 @dataclass(slots=True)

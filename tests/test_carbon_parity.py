@@ -1,3 +1,4 @@
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -5,6 +6,8 @@ import pytest
 from phantasma_py.carbon import (
     Bytes32,
     ChainConfig,
+    CreateSeriesFeeOptions,
+    CreateTokenFeeOptions,
     GasConfig,
     IntX,
     MarketConfig,
@@ -25,19 +28,32 @@ from phantasma_py.carbon import (
     TxType,
     VMDynamicVariable,
     VMType,
+    build_and_serialize_token_schemas,
+    build_create_token_series_tx,
+    build_create_token_tx,
+    build_mint_non_fungible_tx,
     build_mint_non_fungible_tx_and_sign,
     build_mint_non_fungible_tx_and_sign_hex,
+    build_mint_phantasma_non_fungible_single_tx,
+    build_nft_rom,
+    build_phantasma_nft_rom,
+    build_series_info,
+    build_token_info,
+    build_token_metadata,
     bytes32_from_phantasma_address,
     bytes32_from_public_key,
     check_token_symbol,
     deserialize,
     parse_mint_phantasma_non_fungible_result,
+    prepare_standard_token_schemas,
     serialize,
     sign_and_serialize_tx_msg_hex,
     unpack_nft_instance_id,
 )
 from phantasma_py.crypto import PhantasmaKeys
 from phantasma_py.errors import BuilderError
+
+CARBON_TX_BUILDER_FIXTURE_SHA256 = "efcb2d237ffd2ca3178b8c3b3106c7d035bc0f5e05959abb135163d637c3b11d"
 
 
 def vector_hex(kind: str) -> str:
@@ -48,8 +64,48 @@ def vector_hex(kind: str) -> str:
     raise AssertionError(f"missing vector {kind}")
 
 
+def fixture_rows(path: str) -> list[tuple[str, str, str, str]]:
+    rows: list[tuple[str, str, str, str]] = []
+    for line in Path(path).read_text().splitlines():
+        if not line or line.startswith("case_id\t"):
+            continue
+        case_id, source, expected_hex, notes = line.split("\t")
+        rows.append((case_id, source, expected_hex, notes))
+    return rows
+
+
 def repeated_bytes32(value: int) -> Bytes32:
     return Bytes32(bytes([value]) * 32)
+
+
+def test_carbon_tx_builder_fixture_hash_is_locked() -> None:
+    data = Path("tests/fixtures/carbon_tx_builder_vectors.tsv").read_bytes()
+    assert sha256(data).hexdigest() == CARBON_TX_BUILDER_FIXTURE_SHA256
+
+
+def sample_token_metadata() -> dict[str, str]:
+    return {
+        "name": "My test token!",
+        "icon": (
+            "data:image/png;base64,"
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
+        ),
+        "url": "http://example.com",
+        "description": "My test token description",
+    }
+
+
+def sample_nft_metadata(include_nested_rom: bool = False) -> list[tuple[str, object]]:
+    fields: list[tuple[str, object]] = [
+        ("name", "My NFT #1"),
+        ("description", "This is my first NFT!"),
+        ("imageURL", "images-assets.nasa.gov/image/PIA13227/PIA13227~orig.jpg"),
+        ("infoURL", "https://images.nasa.gov/details/PIA13227"),
+        ("royalties", 10_000_000),
+    ]
+    if include_nested_rom:
+        fields.append(("rom", b"\x01\x42"))
+    return fields
 
 
 def test_chain_and_gas_config_round_trip() -> None:
@@ -169,68 +225,161 @@ def test_carbon_address_and_signing_helpers_match_shared_vector() -> None:
     assert sign_and_serialize_tx_msg_hex(msg, keys).upper() == vector_hex("TX2")
 
 
-def test_extra_tx_vectors_match_cs_go_ts_reference() -> None:
+@pytest.mark.parametrize(
+    "case_id,source,expected_hex,notes", fixture_rows("tests/fixtures/carbon_tx_builder_vectors.tsv")
+)
+def test_carbon_tx_builders_match_golden_vectors(case_id: str, source: str, expected_hex: str, notes: str) -> None:
+    assert source in {"csharp_sdk", "go_sdk"}, notes
+    assert _carbon_tx_builder_vector(case_id) == expected_hex, case_id
+    if not case_id.startswith("signed_"):
+        decoded = deserialize(bytes.fromhex(expected_hex), TxMsg)
+        assert serialize(decoded).hex().upper() == expected_hex, case_id
+
+
+def _carbon_tx_builder_vector(case_id: str) -> str:
     keys = PhantasmaKeys.from_wif("KwPpBSByydVKqStGHAnZzQofCqhDmD2bfRgc9BmZqM3ZmsdWJw4d")
     receiver = PhantasmaKeys.from_wif("KwVG94yjfVg1YKFyRxAGtug93wdRbmLnqqrFV6Yd2CiA9KZDAp4H")
     sender_bytes = bytes32_from_public_key(keys.public_key)
     receiver_bytes = bytes32_from_public_key(receiver.public_key)
 
-    cases = [
-        (
-            "04C04EF9B6990100008096980000000000E803000000000000"
-            "F94A8E45BDF1E37A8466B951849E92D1BAF870F49D1D04CD204D0BC9FE430896"
-            "0C746573742D7061796C6F6164"
-            "D4C5061B81C4682B27A0CFC6459CD9D7892EB60A43F73DD1060B6C478AA7C3D8"
-            "F94A8E45BDF1E37A8466B951849E92D1BAF870F49D1D04CD204D0BC9FE430896"
-            "010000000000000000E1F50500000000",
-            TxMsg(
-                TxType.TRANSFER_FUNGIBLE_GAS_PAYER,
-                1_759_711_416_000,
-                10_000_000,
-                1_000,
-                sender_bytes,
-                SmallString("test-payload"),
-                TxMsgTransferFungibleGasPayer(receiver_bytes, sender_bytes, 1, 100_000_000),
-            ),
-        ),
-        (
-            "0BC04EF9B6990100008096980000000000E803000000000000"
-            "F94A8E45BDF1E37A8466B951849E92D1BAF870F49D1D04CD204D0BC9FE430896"
-            "0C746573742D7061796C6F6164"
-            "0100000000000000"
-            "F94A8E45BDF1E37A8466B951849E92D1BAF870F49D1D04CD204D0BC9FE430896"
-            "0800E1F50500000000",
-            TxMsg(
-                TxType.BURN_FUNGIBLE_GAS_PAYER,
-                1_759_711_416_000,
-                10_000_000,
-                1_000,
-                sender_bytes,
-                SmallString("test-payload"),
-                TxMsgBurnFungibleGasPayer(1, sender_bytes, IntX(100_000_000)),
-            ),
-        ),
-        (
-            "09C04EF9B6990100008096980000000000E803000000000000"
-            "F94A8E45BDF1E37A8466B951849E92D1BAF870F49D1D04CD204D0BC9FE430896"
-            "0C746573742D7061796C6F6164"
-            "0100000000000000"
-            "D4C5061B81C4682B27A0CFC6459CD9D7892EB60A43F73DD1060B6C478AA7C3D8"
-            "0800E1F50500000000",
-            TxMsg(
-                TxType.MINT_FUNGIBLE,
-                1_759_711_416_000,
-                10_000_000,
-                1_000,
-                sender_bytes,
-                SmallString("test-payload"),
-                TxMsgMintFungible(1, receiver_bytes, IntX(100_000_000)),
-            ),
-        ),
-    ]
-    for expected_hex, msg in cases:
-        assert serialize(msg).hex().upper() == expected_hex
-        assert serialize(deserialize(bytes.fromhex(expected_hex), TxMsg)).hex().upper() == expected_hex
+    if case_id == "signed_transfer_fungible":
+        msg = TxMsg(
+            TxType.TRANSFER_FUNGIBLE,
+            1_759_711_416_000,
+            10_000_000,
+            1_000,
+            sender_bytes,
+            SmallString("test-payload"),
+            TxMsgTransferFungible(receiver_bytes, 1, 100_000_000),
+        )
+        return sign_and_serialize_tx_msg_hex(msg, keys).upper()
+    if case_id == "transfer_fungible_gas_payer":
+        return (
+            serialize(
+                TxMsg(
+                    TxType.TRANSFER_FUNGIBLE_GAS_PAYER,
+                    1_759_711_416_000,
+                    10_000_000,
+                    1_000,
+                    sender_bytes,
+                    SmallString("test-payload"),
+                    TxMsgTransferFungibleGasPayer(receiver_bytes, sender_bytes, 1, 100_000_000),
+                )
+            )
+            .hex()
+            .upper()
+        )
+    if case_id == "burn_fungible_gas_payer":
+        return (
+            serialize(
+                TxMsg(
+                    TxType.BURN_FUNGIBLE_GAS_PAYER,
+                    1_759_711_416_000,
+                    10_000_000,
+                    1_000,
+                    sender_bytes,
+                    SmallString("test-payload"),
+                    TxMsgBurnFungibleGasPayer(1, sender_bytes, IntX(100_000_000)),
+                )
+            )
+            .hex()
+            .upper()
+        )
+    if case_id == "mint_fungible":
+        return (
+            serialize(
+                TxMsg(
+                    TxType.MINT_FUNGIBLE,
+                    1_759_711_416_000,
+                    10_000_000,
+                    1_000,
+                    sender_bytes,
+                    SmallString("test-payload"),
+                    TxMsgMintFungible(1, receiver_bytes, IntX(100_000_000)),
+                )
+            )
+            .hex()
+            .upper()
+        )
+    if case_id == "create_token_nft":
+        token_info = build_token_info(
+            "MYNFT",
+            IntX(0),
+            is_nft=True,
+            decimals=0,
+            owner=sender_bytes,
+            metadata=build_token_metadata(sample_token_metadata()),
+            token_schemas=build_and_serialize_token_schemas(),
+        )
+        return (
+            serialize(
+                build_create_token_tx(
+                    token_info,
+                    sender_bytes,
+                    CreateTokenFeeOptions(),
+                    100_000_000,
+                    1_759_711_416_000,
+                )
+            )
+            .hex()
+            .upper()
+        )
+    if case_id == "create_token_series_u256_id":
+        series_info = build_series_info((1 << 256) - 1, 0, 0, sender_bytes)
+        return (
+            serialize(
+                build_create_token_series_tx(
+                    (1 << 64) - 1,
+                    series_info,
+                    sender_bytes,
+                    CreateSeriesFeeOptions(),
+                    100_000_000,
+                    1_759_711_416_000,
+                )
+            )
+            .hex()
+            .upper()
+        )
+    schemas = prepare_standard_token_schemas(False)
+    if case_id == "mint_non_fungible_u256_nft_id":
+        rom = build_nft_rom(schemas.rom, (1 << 256) - 1, sample_nft_metadata(include_nested_rom=True))
+        return (
+            serialize(
+                build_mint_non_fungible_tx(
+                    (1 << 64) - 1,
+                    (1 << 32) - 1,
+                    sender_bytes,
+                    sender_bytes,
+                    rom,
+                    b"",
+                    MintNFTFeeOptions(),
+                    100_000_000,
+                    1_759_711_416_000,
+                )
+            )
+            .hex()
+            .upper()
+        )
+    if case_id == "mint_phantasma_nft_single_u255_series":
+        public_rom = build_phantasma_nft_rom(schemas.rom, sample_nft_metadata())
+        return (
+            serialize(
+                build_mint_phantasma_non_fungible_single_tx(
+                    42,
+                    (1 << 255) - 1,
+                    sender_bytes,
+                    receiver_bytes,
+                    public_rom,
+                    b"",
+                    MintNFTFeeOptions(),
+                    123,
+                    1_759_711_416_000,
+                )
+            )
+            .hex()
+            .upper()
+        )
+    raise AssertionError(f"unhandled builder vector: {case_id}")
 
 
 def test_unpack_nft_instance_id_matches_reference_helper() -> None:

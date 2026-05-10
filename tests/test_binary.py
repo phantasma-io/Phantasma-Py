@@ -1,7 +1,10 @@
+from pathlib import Path
+
 import pytest
 
 from phantasma_py.binary import BinaryReader, BinaryWriter, big_int_to_vm_bytes, vm_bytes_to_big_int
 from phantasma_py.errors import SerializationError
+from phantasma_py.vm import ScriptBuilder, VMObject, VMType
 
 
 @pytest.mark.parametrize(
@@ -66,11 +69,34 @@ def test_reader_bounds_and_max_array_size_fail_closed() -> None:
     ],
 )
 def test_vm_big_integer_round_trip_edges(value: int) -> None:
+    # BinaryWriter VM numbers use the padded Gen2 storage shape and must still
+    # decode to the original integer for sign-edge values.
     raw = big_int_to_vm_bytes(value)
     assert vm_bytes_to_big_int(raw) == value
-    if len(raw) > 1:
-        assert not (raw[-1] == 0x00 and raw[-2] & 0x80 == 0)
-        assert not (raw[-1] == 0xFF and raw[-2] & 0x80 != 0)
+
+
+def test_vm_big_integer_matches_gen2_csharp_binary_fixtures() -> None:
+    # The Gen2 C# fixture checks both classic VM BigInteger encodings:
+    # padded BinaryWriter/VMObject storage and unpadded ScriptBuilder LOAD data.
+    fixture = Path("tests/fixtures/gen2_csharp_vm_bigint_binary.tsv")
+    for line in fixture.read_text().splitlines():
+        if not line or line.startswith("#") or line.startswith("case_id\t"):
+            continue
+        case_id, value_text, signed_hex, _unsigned_hex, io_write_hex, script_load_hex = line.split("\t")
+        value = int(value_text)
+
+        raw = big_int_to_vm_bytes(value)
+        assert raw.hex() == signed_hex, f"{case_id} signed bytes"
+        assert vm_bytes_to_big_int(raw) == value, f"{case_id} round-trip"
+
+        writer = BinaryWriter()
+        writer.write_big_integer(value)
+        assert writer.bytes().hex() == io_write_hex, f"{case_id} WriteBigInteger"
+        assert VMObject.from_bytes(bytes([VMType.NUMBER]) + writer.bytes()).as_number() == value
+
+        builder = ScriptBuilder.begin()
+        builder.emit_load_number(0, value)
+        assert builder.to_script().hex() == script_load_hex, f"{case_id} ScriptBuilder LOAD"
 
 
 def test_fixed_width_integer_writers_reject_out_of_range_values() -> None:

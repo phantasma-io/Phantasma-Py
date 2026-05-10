@@ -1,0 +1,34 @@
+# source.repo=Phantasma_Gen2
+# source.commit=30f1afdc26d917d7dc8e82e2e0a9956d5b2e0b37
+# generated.utc=2026-03-16T21:26:25.1433671+00:00
+# source.files=Phantasma.Core/src/Utils/IOUtils.cs;Phantasma.Core/src/Numerics/BigIntegerExtension.cs;Phantasma.Core/src/Domain/VM/VMObject.cs;Phantasma.Business/src/VM/Utils/ScriptBuilder.cs;Phantasma.Business/src/VM/ScriptContext.cs;Phantasma.Business/src/VM/VirtualMachine.cs;Phantasma.Business/src/Blockchain/VM/GasMachine.cs
+case_id	op	left_kind	left_type	left_payload	right_kind	right_type	right_payload	outcome	state	top_type	top_descriptor	exception_type	exception_category	exception_message
+div_even	DIV	number	Number	144	number	Number	12	ok	Halt	Number	Number:12
+div_zero	DIV	number	Number	5	number	Number	0	exception	Fault			VMException	divide_by_zero	Attempted to divide by zero.
+div_invalid_string	DIV	number	Number	1	string	String	abc	exception	Fault			VMException	string_to_bigint	Cannot convert String 'abc' to BigInteger.
+mod_negative	MOD	number	Number	-5	number	Number	2	ok	Halt	Number	Number:-1
+mod_zero	MOD	number	Number	5	number	Number	0	exception	Fault			VMException	divide_by_zero	Attempted to divide by zero.
+shl_small	SHL	number	Number	1	number	Number	5	ok	Halt	Number	Number:32
+shl_negative_count	SHL	number	Number	1	number	Number	-1	ok	Halt	Number	Number:0
+shl_count_overflow	SHL	number	Number	1	number	Number	2147483648	exception	Fault			VMException	int32_overflow	Arithmetic operation resulted in an overflow.
+shr_negative_value	SHR	number	Number	-7	number	Number	1	ok	Halt	Number	Number:-4
+shr_negative_count	SHR	number	Number	8	number	Number	-2	ok	Halt	Number	Number:32
+shr_count_overflow	SHR	number	Number	8	number	Number	2147483648	exception	Fault			VMException	int32_overflow	Arithmetic operation resulted in an overflow.
+pow_basic	POW	number	Number	3	number	Number	3	ok	Halt	Number	Number:27
+pow_negative_exponent	POW	number	Number	123	number	Number	-1	exception	Fault			VMException	negative_exponent	The number must be greater than or equal to zero. (Parameter 'exponent')
+pow_exponent_overflow	POW	number	Number	2	number	Number	2147483648	exception	Fault			VMException	int32_overflow	Arithmetic operation resulted in an overflow.
+pow_string_invalid	POW	number	Number	1	string	String	abc	exception	Fault			VMException	string_to_bigint	Cannot convert String 'abc' to BigInteger.
+and_bool_true_false	AND	bool	Bool	true	bool	Bool	false	ok	Halt	Bool	Bool:false
+or_bool_false_true	OR	bool	Bool	false	bool	Bool	true	ok	Halt	Bool	Bool:true
+xor_bool_true_true	XOR	bool	Bool	true	bool	Bool	true	ok	Halt	Bool	Bool:false
+and_number_basic	AND	number	Number	6	number	Number	3	ok	Halt	Number	Number:2
+or_number_basic	OR	number	Number	6	number	Number	3	ok	Halt	Number	Number:7
+xor_number_basic	XOR	number	Number	6	number	Number	3	ok	Halt	Number	Number:5
+and_number_negative	AND	number	Number	-5	number	Number	3	ok	Halt	Number	Number:3
+and_number_too_many_bits	AND	number	Number	36893488147419103232	number	Number	1	exception	Fault			VMException	too_many_bits	Script execution failed: too many bits @ AND : 22
+or_number_too_many_bits	OR	number	Number	36893488147419103232	number	Number	1	exception	Fault			VMException	too_many_bits	Script execution failed: too many bits @ OR : 22
+xor_number_too_many_bits	XOR	number	Number	36893488147419103232	number	Number	1	exception	Fault			VMException	too_many_bits	Script execution failed: too many bits @ XOR : 22
+and_mixed_bool_number	AND	bool	Bool	true	number	Number	1	exception	Fault			VMException	v_m_exception	Script execution failed: expected Bool for logical op @ AND : 14
+and_enum_basic	AND	enum	Enum	3	enum	Enum	2	ok	Halt	Bool	Bool:true
+or_enum_fault	OR	enum	Enum	3	enum	Enum	2	fault	Fault	None	None
+xor_enum_fault	XOR	enum	Enum	3	enum	Enum	2	fault	Fault	None	None

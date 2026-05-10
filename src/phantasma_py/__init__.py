@@ -298,4 +298,4 @@ __all__ = [
     "vm_type_name",
 ]
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"

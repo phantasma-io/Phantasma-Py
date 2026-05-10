@@ -1,9 +1,16 @@
 import pytest
 
+from phantasma_py import __version__
 from phantasma_py.binary import BinaryWriter
 from phantasma_py.crypto import PhantasmaKeys
-from phantasma_py.transaction import Transaction, tx_state_is_fault, tx_state_is_success
+from phantasma_py.transaction import SDK_PAYLOAD, Transaction, tx_state_is_fault, tx_state_is_success
 from phantasma_py.vm import ScriptBuilder
+
+
+def test_default_sdk_payload_matches_package_version() -> None:
+    # The classic transaction default payload is visible on-chain, so it must
+    # move with the package version instead of retaining a stale release string.
+    assert f"PY-SDK-v{__version__}".encode() == SDK_PAYLOAD
 
 
 def test_classic_transaction_sign_and_round_trip() -> None:

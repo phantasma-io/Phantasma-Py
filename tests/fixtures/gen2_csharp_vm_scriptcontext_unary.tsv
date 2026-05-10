@@ -1,0 +1,22 @@
+# source.repo=Phantasma_Gen2
+# source.commit=30f1afdc26d917d7dc8e82e2e0a9956d5b2e0b37
+# generated.utc=2026-03-16T21:26:25.1433671+00:00
+# source.files=Phantasma.Core/src/Utils/IOUtils.cs;Phantasma.Core/src/Numerics/BigIntegerExtension.cs;Phantasma.Core/src/Domain/VM/VMObject.cs;Phantasma.Business/src/VM/Utils/ScriptBuilder.cs;Phantasma.Business/src/VM/ScriptContext.cs;Phantasma.Business/src/VM/VirtualMachine.cs;Phantasma.Business/src/Blockchain/VM/GasMachine.cs
+case_id	op	source_kind	source_type	source_payload	outcome	state	top_type	top_descriptor	exception_type	exception_category	exception_message
+sign_zero	SIGN	number	Number	0	ok	Halt	Number	Number:0
+sign_huge_negative	SIGN	number	Number	-123098123049830982903580234959875213840923849203758942357834091	ok	Halt	Number	Number:-1
+sign_invalid_string	SIGN	string	String	abc	exception	Fault			VMException	string_to_bigint	Cannot convert String 'abc' to BigInteger.
+negate_number	NEGATE	number	Number	42	ok	Halt	Number	Number:-42
+negate_string_number	NEGATE	string	String	123	ok	Halt	Number	Number:-123
+negate_bool_true	NEGATE	bool	Bool	true	exception	Fault			VMException	v_m_exception	Script execution failed: Invalid VM Register type: Bool @ NEGATE : 8
+abs_negative	ABS	number	Number	-42	ok	Halt	Number	Number:42
+abs_string_number	ABS	string	String	123	ok	Halt	Number	Number:123
+abs_invalid_string	ABS	string	String	abc	exception	Fault			VMException	string_to_bigint	Cannot convert String 'abc' to BigInteger.
+not_bool_false	NOT	bool	Bool	false	ok	Halt	Bool	Bool:true
+not_bool_true	NOT	bool	Bool	true	ok	Halt	Bool	Bool:false
+not_number_zero	NOT	number	Number	0	ok	Halt	Bool	Bool:true
+not_number_positive	NOT	number	Number	5	ok	Halt	Bool	Bool:false
+not_string_empty	NOT	string	String		exception	Fault			VMException	invalid_vm_bool_cast	Invalid cast: expected bool, got String
+not_string_text	NOT	string	String	neo	exception	Fault			VMException	invalid_vm_bool_cast	Invalid cast: expected bool, got String
+not_bytes_empty	NOT	bytes	Bytes		exception	Fault			VMException	invalid_vm_bool_cast	Invalid cast: expected bool, got Bytes
+not_bytes_zero	NOT	bytes	Bytes	00	ok	Halt	Bool	Bool:true

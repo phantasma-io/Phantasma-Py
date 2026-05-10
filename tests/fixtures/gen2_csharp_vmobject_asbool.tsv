@@ -1,0 +1,21 @@
+# source.repo=Phantasma_Gen2
+# source.commit=30f1afdc26d917d7dc8e82e2e0a9956d5b2e0b37
+# generated.utc=2026-03-16T21:26:25.1433671+00:00
+# source.files=Phantasma.Core/src/Utils/IOUtils.cs;Phantasma.Core/src/Numerics/BigIntegerExtension.cs;Phantasma.Core/src/Domain/VM/VMObject.cs;Phantasma.Business/src/VM/Utils/ScriptBuilder.cs;Phantasma.Business/src/VM/ScriptContext.cs;Phantasma.Business/src/VM/VirtualMachine.cs;Phantasma.Business/src/Blockchain/VM/GasMachine.cs
+case_id	source_kind	source_type	payload	outcome	value	exception_type	exception_category	exception_message
+none	empty	None	(none)	exception		Exception	invalid_vm_bool_cast	Invalid cast: expected bool, got None
+string_valid_number	string	String	123456	exception		Exception	invalid_vm_bool_cast	Invalid cast: expected bool, got String
+string_invalid_number	string	String	abc	exception		Exception	invalid_vm_bool_cast	Invalid cast: expected bool, got String
+bytes_empty	bytes	Bytes		exception		Exception	invalid_vm_bool_cast	Invalid cast: expected bool, got Bytes
+bytes_bool_zero	bytes	Bytes	00	ok	false
+bytes_bool_ff	bytes	Bytes	ff	ok	true
+bytes_negative_two	bytes	Bytes	feffff	exception		Exception	invalid_vm_bool_cast	Invalid cast: expected bool, got Bytes
+bytes_positive_128	bytes	Bytes	8000	exception		Exception	invalid_vm_bool_cast	Invalid cast: expected bool, got Bytes
+bool_true	bool	Bool	true	ok	true
+bool_false	bool	Bool	false	ok	false
+enum_42	enum	Enum	42	exception		Exception	invalid_vm_bool_cast	Invalid cast: expected bool, got Enum
+timestamp	timestamp	Timestamp	1234567890	exception		Exception	invalid_vm_bool_cast	Invalid cast: expected bool, got Timestamp
+number_huge	number	Number	123098123049830982903580234959875213840923849203758942357834091	ok	true
+object_hash	object	Object	000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f	exception		Exception	invalid_vm_bool_cast	Invalid cast: expected bool, got Object
+object_address	object	Object	00000000000000000000000000000000000000000000000000000000000000000000	exception		Exception	invalid_vm_bool_cast	Invalid cast: expected bool, got Object
+struct_simple	struct	Struct	name=neo,count=7	exception		Exception	invalid_vm_bool_cast	Invalid cast: expected bool, got Struct

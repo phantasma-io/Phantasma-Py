@@ -1,0 +1,19 @@
+# source.repo=Phantasma_Gen2
+# source.commit=30f1afdc26d917d7dc8e82e2e0a9956d5b2e0b37
+# generated.utc=2026-03-16T21:26:25.1433671+00:00
+# source.files=Phantasma.Core/src/Utils/IOUtils.cs;Phantasma.Core/src/Numerics/BigIntegerExtension.cs;Phantasma.Core/src/Domain/VM/VMObject.cs;Phantasma.Business/src/VM/Utils/ScriptBuilder.cs;Phantasma.Business/src/VM/ScriptContext.cs;Phantasma.Business/src/VM/VirtualMachine.cs;Phantasma.Business/src/Blockchain/VM/GasMachine.cs
+case_id	op	a	outcome	value	exception_type	exception_category	exception_message
+sign_zero	SIGN	0	ok	0
+sign_positive	SIGN	42	ok	1
+sign_negative	SIGN	-42	ok	-1
+sign_huge_positive	SIGN	123098123049830982903580234959875213840923849203758942357834091	ok	1
+sign_huge_negative	SIGN	-123098123049830982903580234959875213840923849203758942357834091	ok	-1
+negate_zero	NEGATE	0	ok	0
+negate_positive	NEGATE	42	ok	-42
+negate_negative	NEGATE	-42	ok	42
+negate_huge_positive	NEGATE	123098123049830982903580234959875213840923849203758942357834091	ok	-123098123049830982903580234959875213840923849203758942357834091
+negate_huge_negative	NEGATE	-123098123049830982903580234959875213840923849203758942357834091	ok	123098123049830982903580234959875213840923849203758942357834091
+abs_zero	ABS	0	ok	0
+abs_positive	ABS	42	ok	42
+abs_negative	ABS	-42	ok	42
+abs_huge_negative	ABS	-123098123049830982903580234959875213840923849203758942357834091	ok	123098123049830982903580234959875213840923849203758942357834091

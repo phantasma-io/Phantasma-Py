@@ -1,4 +1,6 @@
 from datetime import UTC, datetime
+from hashlib import sha256
+from pathlib import Path
 
 import pytest
 
@@ -16,6 +18,73 @@ EXPECTED_CONSENSUS_SINGLE_VOTE = (
     "0D000409636F6E73656E7375732D00012E010D000223220100AA53BE71FC41BC0889B694F4D6D03F7906A3D9A217"
     "05943CAF9632EEAFBB489503000D0004085370656E6447617303000D0004036761732D00012E010B"
 )
+SCRIPT_BUILDER_FIXTURE_SHA256 = "81907a6b1df095b84599d8f8d709623e20dadeca2082ab9dffef114c7d0015e0"
+
+
+def script_vector_rows() -> list[tuple[str, str, str, str]]:
+    rows: list[tuple[str, str, str, str]] = []
+    for line in Path("tests/fixtures/classic_script_builder_vectors.tsv").read_text().splitlines():
+        if not line or line.startswith("case_id\t"):
+            continue
+        case_id, source, expected_hex, notes = line.split("\t")
+        rows.append((case_id, source, expected_hex, notes))
+    return rows
+
+
+def test_script_builder_fixture_hash_is_locked() -> None:
+    data = Path("tests/fixtures/classic_script_builder_vectors.tsv").read_bytes()
+    assert sha256(data).hexdigest() == SCRIPT_BUILDER_FIXTURE_SHA256
+
+
+@pytest.mark.parametrize("case_id,source,expected_hex,notes", script_vector_rows())
+def test_script_builder_matches_golden_vectors(case_id: str, source: str, expected_hex: str, notes: str) -> None:
+    assert source == "csharp_sdk", notes
+    assert _script_builder_vector(case_id) == expected_hex, case_id
+
+
+def _script_builder_vector(case_id: str) -> str:
+    main_keys = PhantasmaKeys.from_wif("L5UEVHBjujaR1721aZM5Zm5ayjDyamMZS9W35RE9Y9giRkdf3dVx")
+    helper_keys = PhantasmaKeys.from_wif("KxMn2TgXukYaNXx7tEdjh7qB2YaMgeuKy47j4rvKigHhBuZWeP3r")
+    address = helper_keys.address
+    null = Address.null()
+
+    if case_id == "consensus_single_vote":
+        return (
+            ScriptBuilder.begin()
+            .allow_gas(main_keys.address, null, 10_000, 210_000)
+            .call_contract("consensus", "SingleVote", main_keys.address.text, "system.nexus.protocol.version", 0)
+            .spend_gas(main_keys.address)
+            .end_script_hex()
+        )
+    if case_id == "gas_transfer_spend":
+        return (
+            ScriptBuilder.begin()
+            .allow_gas(address, null, 100_000, 21_000)
+            .transfer_tokens("SOUL", address, null, 100_000_000)
+            .spend_gas(address)
+            .end_script_hex()
+        )
+    if case_id == "mint_tokens":
+        return ScriptBuilder.begin().mint_tokens("SOUL", address, null, 1).end_script_hex()
+    if case_id == "transfer_balance":
+        return ScriptBuilder.begin().transfer_balance("KCAL", address, null).end_script_hex()
+    if case_id == "transfer_nft":
+        return ScriptBuilder.begin().transfer_nft("ART", address, null, 42).end_script_hex()
+    if case_id == "cross_transfer_token":
+        return ScriptBuilder.begin().cross_transfer_token(null, "SOUL", address, null, 1).end_script_hex()
+    if case_id == "cross_transfer_nft":
+        return ScriptBuilder.begin().cross_transfer_nft(null, "ART", address, null, 7).end_script_hex()
+    if case_id == "stake_unstake":
+        return ScriptBuilder.begin().stake(address, 7).unstake(address, 8).end_script_hex()
+    if case_id == "call_nft":
+        return ScriptBuilder.begin().call_nft("ART", 7, "mint", address).end_script_hex()
+    if case_id == "runtime_array_timestamp":
+        return (
+            ScriptBuilder.begin()
+            .call_interop("Runtime.Test", ["alpha", 7], datetime.fromtimestamp(1_778_330_400, UTC))
+            .end_script_hex()
+        )
+    raise AssertionError(f"unhandled script vector: {case_id}")
 
 
 def test_script_builder_matches_shared_consensus_vector() -> None:
@@ -153,6 +222,13 @@ def test_script_builder_rejects_unsupported_arguments() -> None:
     assert error is not None
     assert "unsupported type object" in str(error)
 
+    script, error = (
+        ScriptBuilder.begin().call_interop("Runtime.Time", datetime(3000, 1, 1, tzinfo=UTC)).end_script_with_error()
+    )
+    assert script == b""
+    assert error is not None
+    assert "timestamp out of VM uint32 range" in str(error)
+
 
 def test_script_builder_array_and_timestamp_argument_paths_are_stable() -> None:
     script = (
@@ -189,12 +265,55 @@ def test_vm_object_decodes_primitives_and_structs() -> None:
     assert obj.data[VMObject(VMType.NUMBER, 7)].as_number() == 1
 
 
+def test_vm_object_as_number_matches_gen2_csharp_fixtures() -> None:
+    # VMObject.AsNumber is part of script-result decoding, so SDK conversion
+    # behavior must match Gen2 for numeric strings, byte payloads, and hash
+    # objects instead of only for VMType.NUMBER values.
+    fixture = Path("tests/fixtures/gen2_csharp_vmobject_asnumber.tsv")
+    for line in fixture.read_text().splitlines():
+        if not line or line.startswith("#") or line.startswith("case_id\t"):
+            continue
+        case_id, source_kind, _source_type, payload, outcome, value, *_ = line.split("\t")
+        if source_kind == "empty":
+            obj = VMObject(VMType.NONE)
+        elif source_kind == "string":
+            obj = VMObject(VMType.STRING, payload)
+        elif source_kind == "bytes":
+            obj = VMObject(VMType.BYTES, bytes.fromhex(payload))
+        elif source_kind == "bool":
+            obj = VMObject(VMType.BOOL, payload == "true")
+        elif source_kind == "enum":
+            obj = VMObject(VMType.ENUM, int(payload))
+        elif source_kind == "timestamp":
+            obj = VMObject(VMType.TIMESTAMP, int(payload))
+        elif source_kind == "number":
+            obj = VMObject(VMType.NUMBER, int(payload))
+        elif source_kind == "object":
+            obj = VMObject(VMType.OBJECT, bytes.fromhex(payload))
+        elif source_kind == "struct":
+            obj = VMObject(
+                VMType.STRUCT,
+                {
+                    VMObject(VMType.STRING, "name"): VMObject(VMType.STRING, "neo"),
+                    VMObject(VMType.STRING, "count"): VMObject(VMType.NUMBER, 7),
+                },
+            )
+        else:
+            raise AssertionError(f"unsupported fixture source kind: {source_kind}")
+
+        if outcome == "ok":
+            assert obj.as_number() == int(value), case_id
+        else:
+            with pytest.raises((SerializationError, ValueError)):
+                obj.as_number()
+
+
 def test_vm_object_rejects_invalid_or_incompatible_values() -> None:
     with pytest.raises(SerializationError, match="unsupported VM object type"):
         VMObject.from_bytes(b"\xff")
     with pytest.raises(SerializationError, match="unexpected trailing"):
         VMObject.from_bytes(bytes([VMType.BOOL, 1, 0]))
-    with pytest.raises(SerializationError, match="cannot convert BYTES to number"):
-        VMObject(VMType.BYTES, b"1").as_number()
+    with pytest.raises(SerializationError, match="cannot convert OBJECT to number"):
+        VMObject(VMType.OBJECT, b"\x00" * 34).as_number()
     with pytest.raises(UnicodeDecodeError):
         VMObject(VMType.BYTES, b"\xff").as_string()
