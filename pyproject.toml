@@ -26,8 +26,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/phantasma-io/Phantasma-Py"
-Repository = "https://github.com/phantasma-io/Phantasma-Py"
+Homepage = "https://github.com/phantasma-io/phantasma-sdk-py"
+Repository = "https://github.com/phantasma-io/phantasma-sdk-py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/phantasma_py"]
