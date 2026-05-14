@@ -38,6 +38,7 @@ from phantasma_py.carbon import (
     VMType,
     build_and_serialize_token_schemas,
     build_mint_phantasma_non_fungible_single_tx,
+    build_mint_phantasma_non_fungible_tx,
     build_nft_rom,
     build_phantasma_nft_public_mint_schema,
     build_phantasma_nft_rom,
@@ -459,3 +460,35 @@ def test_reader_length_bounds_and_fee_defaults_match_reference_helpers() -> None
     assert CreateTokenFeeOptions().calculate_max_gas_for_symbol(SmallString("TOKEN")) > 0
     assert CreateSeriesFeeOptions().calculate_max_gas() > 0
     assert MintNFTFeeOptions().calculate_max_gas() > 0
+
+
+def test_fee_options_scale_only_count_sensitive_mint_fees() -> None:
+    assert MintNFTFeeOptions(gas_fee_base=10, fee_multiplier=1_000).calculate_max_gas(3) == 30_000
+    assert (
+        MintNFTFeeOptions(gas_fee_base=10, fee_multiplier=1_000).calculate_max_gas(
+            [PhantasmaNFTMintInfo(IntX(1), b"", b""), PhantasmaNFTMintInfo(IntX(2), b"", b"")]
+        )
+        == 20_000
+    )
+    with pytest.raises(ValueError, match="count must be a positive integer"):
+        MintNFTFeeOptions().calculate_max_gas([])
+
+    series_fees = CreateSeriesFeeOptions(gas_fee_base=10, gas_fee_create_series_base=20, fee_multiplier=30)
+    assert series_fees.calculate_max_gas() == 900
+    assert series_fees.calculate_max_gas(1) == 900
+    with pytest.raises(ValueError, match="not count-sensitive"):
+        series_fees.calculate_max_gas(2)
+
+    sender = repeated_bytes32(0x11)
+    receiver = repeated_bytes32(0x22)
+    tokens = [
+        PhantasmaNFTMintInfo(IntX(1), b"\x01", b""),
+        PhantasmaNFTMintInfo(IntX(2), b"\x02", b""),
+        PhantasmaNFTMintInfo(IntX(3), b"\x03", b""),
+    ]
+    tx = build_mint_phantasma_non_fungible_tx(
+        42, sender, receiver, tokens, MintNFTFeeOptions(gas_fee_base=10, fee_multiplier=1_000), 123, 999
+    )
+    assert tx.max_gas == 30_000
+    with pytest.raises(ValueError, match="count must be a positive integer"):
+        build_mint_phantasma_non_fungible_tx(42, sender, receiver, [], MintNFTFeeOptions(), 123, 999)

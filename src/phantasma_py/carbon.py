@@ -2051,8 +2051,9 @@ class FeeOptions:
     gas_fee_base: int = 10_000
     fee_multiplier: int = 1_000
 
-    def calculate_max_gas(self) -> int:
-        return self.gas_fee_base * self.fee_multiplier
+    def calculate_max_gas(self, count: int = 1) -> int:
+        count = _parse_positive_count(count, "FeeOptions.calculate_max_gas")
+        return self.gas_fee_base * self.fee_multiplier * count
 
 
 @dataclass(slots=True)
@@ -2074,13 +2075,30 @@ class CreateSeriesFeeOptions(FeeOptions):
     fee_multiplier: int = 10_000
     gas_fee_create_series_base: int = 2_500_000_000
 
-    def calculate_max_gas(self) -> int:
+    def calculate_max_gas(self, count: int = 1) -> int:
+        count = _parse_positive_count(count, "CreateSeriesFeeOptions.calculate_max_gas")
+        if count != 1:
+            raise ValueError("CreateSeriesFeeOptions.calculate_max_gas is not count-sensitive; count must be 1")
         return (self.gas_fee_base + self.gas_fee_create_series_base) * self.fee_multiplier
 
 
 @dataclass(slots=True)
 class MintNFTFeeOptions(FeeOptions):
-    pass
+    def calculate_max_gas(self, count_or_tokens: int | Sequence[Any] = 1) -> int:
+        count = _parse_mint_count(count_or_tokens, "MintNFTFeeOptions.calculate_max_gas")
+        return self.gas_fee_base * self.fee_multiplier * count
+
+
+def _parse_positive_count(value: object, method_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{method_name} count must be a positive integer")
+    return value
+
+
+def _parse_mint_count(value: int | Sequence[Any], method_name: str) -> int:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return _parse_positive_count(len(value), method_name)
+    return _parse_positive_count(value, method_name)
 
 
 def now_unix_millis() -> int:
@@ -2410,11 +2428,12 @@ def build_mint_phantasma_non_fungible_tx(
     expiry: int = 0,
 ) -> TxMsg:
     fees = fees or MintNFTFeeOptions()
-    args = MintPhantasmaNonFungibleArgs(token_id, receiver, list(tokens))
+    token_list = list(tokens)
+    args = MintPhantasmaNonFungibleArgs(token_id, receiver, token_list)
     return TxMsg(
         TxType.CALL,
         expiry or now_unix_millis() + 60 * 1000,
-        fees.calculate_max_gas(),
+        fees.calculate_max_gas(token_list),
         max_data,
         sender,
         SmallString(""),

@@ -4,10 +4,11 @@ just:
 
 PP:="PYTHONPATH=$(pwd)/src"
 
-[group('run')]
+[group('test')]
 test:
     {{PP}} uv run --extra dev pytest
 
+[group('test')]
 check:
     just f-check
     just lint
