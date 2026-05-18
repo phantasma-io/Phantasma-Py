@@ -37,7 +37,7 @@ class BalanceResult:
     amount: str = "0"
     symbol: str = ""
     decimals: int = 0
-    ids: list[str] = field(default_factory=list)
+    ids: list[str] | None = None
 
     def decimal_amount(self) -> str:
         return convert_decimals(self.amount, self.decimals)
@@ -66,9 +66,9 @@ class GovernanceResult:
 
 @dataclass(slots=True)
 class OrganizationResult:
-    id: str = ""
-    name: str = ""
-    members: list[str] = field(default_factory=list)
+    id: str | None = None
+    name: str | None = None
+    members: list[str] | None = None
 
 
 @dataclass(slots=True)
@@ -113,10 +113,11 @@ class AccountResult:
     stakes: StakeResult = field(default_factory=StakeResult)
     stake: str = "0"
     unclaimed: str = "0"
-    relay: str = ""
+    relay: str | None = None
     validator: str = ""
     storage: StorageResult = field(default_factory=StorageResult)
     balances: list[BalanceResult] = field(default_factory=list)
+    txs: list[str] | None = None
 
     def get_token_balance(self, symbol: str, decimals: int = 0) -> BalanceResult:
         for balance in self.balances:
@@ -141,8 +142,8 @@ class LeaderboardRowResult:
 
 @dataclass(slots=True)
 class LeaderboardResult:
-    name: str = ""
-    rows: list[LeaderboardRowResult] = field(default_factory=list)
+    name: str | None = None
+    rows: list[LeaderboardRowResult] | None = None
 
 
 @dataclass(slots=True)
@@ -154,24 +155,24 @@ class DappResult:
 
 @dataclass(slots=True)
 class ChainResult:
-    name: str = ""
-    address: str = ""
-    parent: str = ""
+    name: str | None = None
+    address: str | None = None
+    parent: str | None = None
     height: int = 0
-    organization: str = ""
-    contracts: list[str] = field(default_factory=list)
-    dapps: list[str] = field(default_factory=list)
+    organization: str | None = None
+    contracts: list[str] | None = None
+    dapps: list[str] | None = None
 
 
 @dataclass(slots=True)
 class NexusResult:
-    name: str = ""
+    name: str | None = None
     protocol: int = 0
-    platforms: list[PlatformResult] = field(default_factory=list)
-    tokens: list[TokenResult] = field(default_factory=list)
-    chains: list[ChainResult] = field(default_factory=list)
-    governance: list[GovernanceResult] = field(default_factory=list)
-    organizations: list[str] = field(default_factory=list)
+    platforms: list[PlatformResult] | None = None
+    tokens: list[TokenResult] | None = None
+    chains: list[ChainResult] | None = None
+    governance: list[GovernanceResult] | None = None
+    organizations: list[str] | None = None
 
 
 @dataclass(slots=True)
@@ -186,7 +187,7 @@ class PaginatedResult(Generic[T]):
 @dataclass(slots=True)
 class CursorPaginatedResult(Generic[T]):
     result: T | None = None
-    cursor: str = ""
+    cursor: str | None = None
 
 
 @dataclass(slots=True)
@@ -194,6 +195,7 @@ class EventResult:
     address: str = ""
     contract: str = ""
     kind: str = ""
+    name: str = ""
     data: str = ""
 
 
@@ -210,6 +212,14 @@ class SignatureResult:
 
 
 @dataclass(slots=True)
+class EventExResult:
+    address: str = ""
+    contract: str = ""
+    kind: str = ""
+    data: Any | None = None
+
+
+@dataclass(slots=True)
 class TransactionResult:
     hash: str = ""
     chain_address: str = ""
@@ -218,11 +228,20 @@ class TransactionResult:
     block_hash: str = ""
     script: str = ""
     payload: str = ""
+    carbon_tx_type: int = 0
+    carbon_tx_data: str = ""
+    debug_comment: str | None = None
     events: list[EventResult] = field(default_factory=list)
+    extended_events: list[EventExResult] = field(default_factory=list)
     state: str = ""
     result: str = ""
     fee: str = "0"
     signatures: list[SignatureResult] = field(default_factory=list)
+    sender: str = ""
+    gas_payer: str = ""
+    gas_target: str = ""
+    gas_price: str = ""
+    gas_limit: str = ""
     expiration: int = 0
 
     @property
@@ -245,8 +264,8 @@ class BlockResult:
     txs: list[TransactionResult] = field(default_factory=list)
     validator_address: str = ""
     reward: str = "0"
-    events: list[EventResult] = field(default_factory=list)
-    oracles: list[OracleResult] = field(default_factory=list)
+    events: list[EventResult] | None = None
+    oracles: list[OracleResult] | None = None
 
 
 @dataclass(slots=True)
@@ -305,10 +324,10 @@ class TokenSeriesResult:
     mint_count: str = "0"
     current_supply: str = "0"
     max_supply: str = "0"
-    burned_supply: str = "0"
-    mode: str = ""
-    script: str = ""
-    methods: list[ABIMethodResult] = field(default_factory=list)
+    burned_supply: str | None = None
+    mode: str | None = None
+    script: str | None = None
+    methods: list[ABIMethodResult] | None = None
     metadata: list[TokenPropertyResult] = field(default_factory=list)
 
 
@@ -323,13 +342,13 @@ class TokenResult:
     address: str = ""
     owner: str = ""
     flags: str = ""
-    script: str = ""
+    script: str | None = None
     series: list[TokenSeriesResult] = field(default_factory=list)
     carbon_id: str = ""
-    metadata: list[TokenPropertyResult] = field(default_factory=list)
+    metadata: list[TokenPropertyResult] | None = None
     token_schemas: TokenSchemasResult | None = None
-    external: list[TokenExternalResult] = field(default_factory=list)
-    price: list[TokenPriceResult] = field(default_factory=list)
+    external: list[TokenExternalResult] | None = None
+    price: list[TokenPriceResult] | None = None
 
     def has_flag(self, flag: str) -> bool:
         return flag in [item.strip() for item in self.flags.split(",")]
@@ -383,12 +402,15 @@ class TokenDataResult:
 @dataclass(slots=True)
 class ScriptResult:
     events: list[EventResult] = field(default_factory=list)
-    result: str = ""
+    result: str | None = None
+    error: str | None = None
     results: list[str] = field(default_factory=list)
     oracles: list[OracleResult] = field(default_factory=list)
+    state: str | None = None
+    gas: str | None = None
 
     def decode_result(self) -> VMObject:
-        return VMObject.from_bytes(bytes.fromhex(self.result))
+        return VMObject.from_bytes(bytes.fromhex(self.result or ""))
 
     def decode_results(self, index: int) -> VMObject:
         return VMObject.from_bytes(bytes.fromhex(self.results[index]))
@@ -396,14 +418,14 @@ class ScriptResult:
 
 @dataclass(slots=True)
 class ArchiveResult:
-    name: str = ""
-    hash: str = ""
+    name: str | None = None
+    hash: str | None = None
     time: int = 0
     size: int = 0
-    encryption: str = ""
+    encryption: str | None = None
     block_count: int = 0
-    missing_blocks: list[int] = field(default_factory=list)
-    owners: list[str] = field(default_factory=list)
+    missing_blocks: list[int] | None = None
+    owners: list[str] | None = None
 
 
 @dataclass(slots=True)
@@ -432,8 +454,9 @@ class ContractResult:
     name: str = ""
     address: str = ""
     script: str = ""
-    methods: list[ABIMethodResult] = field(default_factory=list)
-    events: list[ABIEventResult] = field(default_factory=list)
+    owner: str | None = None
+    methods: list[ABIMethodResult] | None = None
+    events: list[ABIEventResult] | None = None
 
 
 @dataclass(slots=True)
@@ -1132,7 +1155,8 @@ def _decode_cursor(cls: type[T], raw: Any) -> CursorPaginatedResult[list[T]]:
     if not isinstance(raw, Mapping):
         raise RPCError("expected object for cursor-paginated result")
     result = _decode_list(cls, raw.get("result", []))
-    return CursorPaginatedResult(result=result, cursor=str(raw.get("cursor", "")))
+    cursor = raw.get("cursor")
+    return CursorPaginatedResult(result=result, cursor=None if cursor is None else str(cursor))
 
 
 def _coerce_int(value: Any) -> int:
@@ -1169,10 +1193,6 @@ def _decode_dataclass(cls: type[T], raw: Any) -> T:
             value = raw[field_info.name]
         elif wire_key in raw:
             value = raw[wire_key]
-        elif field_info.name[:1].upper() + field_info.name[1:] in raw:
-            value = raw[field_info.name[:1].upper() + field_info.name[1:]]
-        elif field_info.name.upper() in raw:
-            value = raw[field_info.name.upper()]
         else:
             continue
         kwargs[field_info.name] = _decode_value(type_hints.get(field_info.name, field_info.type), value)

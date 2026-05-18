@@ -3,10 +3,16 @@ import pytest
 from phantasma_py.errors import RPCError
 from phantasma_py.rpc import (
     AccountResult,
+    ArchiveResult,
+    BlockResult,
+    ChainResult,
     CursorPaginatedResult,
     PhantasmaRPC,
     ScriptResult,
+    TokenDataResult,
+    TokenResult,
     TokenSeriesResult,
+    TransactionResult,
     convert_decimals,
 )
 
@@ -125,7 +131,7 @@ def test_rpc_reports_non_json_http_and_rpc_bodies() -> None:
 def test_rpc_decodes_current_series_shape() -> None:
     # TokenSeriesResult must use current Carbon-aware field names from the RPC and reference SDKs.
     session = FakeSession(
-        {"seriesId": "1", "carbonTokenId": "7", "carbonSeriesId": "8", "metadata": [{"Key": "name", "Value": "A"}]}
+        {"seriesId": "1", "carbonTokenId": "7", "carbonSeriesId": "8", "metadata": [{"key": "name", "value": "A"}]}
     )
     rpc = PhantasmaRPC("http://localhost/rpc", session=session)
 
@@ -135,6 +141,159 @@ def test_rpc_decodes_current_series_shape() -> None:
     assert series.carbon_token_id == "7"
     assert series.carbon_series_id == "8"
     assert series.metadata[0].key == "name"
+
+
+def test_rpc_dtos_decode_current_response_shapes_without_stale_aliases() -> None:
+    tx_payload = {
+        "hash": "HASH",
+        "chainAddress": "CHAIN",
+        "timestamp": 123,
+        "blockHeight": 456,
+        "blockHash": "BLOCK",
+        "script": "",
+        "payload": "CAFE",
+        "carbonTxType": 9,
+        "carbonTxData": "BEEF",
+        "debugComment": "mint",
+        "events": [{"address": "Pevent", "contract": "gas", "kind": "GasEscrow", "name": "GasEscrow", "data": "00"}],
+        "extendedEvents": [{"address": "Pevent", "contract": "market", "kind": "Order", "data": {"id": "7"}}],
+        "state": "Halt",
+        "result": "",
+        "fee": "2600000",
+        "signatures": [{"kind": "Ed25519", "data": "AA"}],
+        "sender": "Psender",
+        "gasPayer": "Pgas",
+        "gasTarget": "Ptarget",
+        "gasPrice": "1",
+        "gasLimit": "100000000",
+        "expiration": 789,
+    }
+    tx = PhantasmaRPC("http://localhost/rpc", session=FakeSession(tx_payload)).get_transaction("HASH")
+    assert isinstance(tx, TransactionResult)
+    assert tx.carbon_tx_type == 9
+    assert tx.carbon_tx_data == "BEEF"
+    assert tx.debug_comment == "mint"
+    assert tx.sender == "Psender"
+    assert tx.gas_payer == "Pgas"
+    assert tx.gas_target == "Ptarget"
+    assert tx.gas_price == "1"
+    assert tx.gas_limit == "100000000"
+    assert tx.events[0].name == "GasEscrow"
+    assert tx.extended_events[0].data == {"id": "7"}
+    assert tx.signatures[0].kind == "Ed25519"
+    assert tx.signatures[0].data == "AA"
+
+    stale_tx = dict(tx_payload)
+    stale_tx["signatures"] = [{"Kind": "Ed25519", "Data": "AA"}]
+    stale_tx["events"] = [{"address": "Pevent", "contract": "gas", "Kind": "GasEscrow", "Data": "00"}]
+    stale = PhantasmaRPC("http://localhost/rpc", session=FakeSession(stale_tx)).get_transaction("HASH")
+    assert stale.signatures[0].kind == ""
+    assert stale.signatures[0].data == ""
+    assert stale.events[0].kind == ""
+    assert stale.events[0].data == ""
+
+    block = PhantasmaRPC(
+        "http://localhost/rpc",
+        session=FakeSession({"hash": "BLOCK", "height": 456, "txs": [tx_payload], "reward": "0"}),
+    ).get_block_by_hash("BLOCK")
+    assert isinstance(block, BlockResult)
+    assert block.events is None
+    assert block.oracles is None
+    assert block.txs[0].carbon_tx_type == 9
+
+    token_payload = {
+        "symbol": "CROWN",
+        "name": "Crown",
+        "decimals": 0,
+        "currentSupply": "1",
+        "maxSupply": "0",
+        "burnedSupply": "0",
+        "address": "S-token",
+        "owner": "Powner",
+        "flags": "Transferable, NonFungible",
+        "carbonId": "4",
+        "metadata": [{"key": "name", "value": "Crown"}],
+        "series": [{"seriesId": "0", "carbonTokenId": "4", "carbonSeriesId": "1"}],
+    }
+    token = PhantasmaRPC("http://localhost/rpc", session=FakeSession(token_payload)).get_token("CROWN")
+    assert isinstance(token, TokenResult)
+    assert token.carbon_id == "4"
+    assert token.metadata is not None
+    assert token.metadata[0].key == "name"
+    assert token.series[0].series_id == "0"
+    assert token.series[0].carbon_series_id == "1"
+    assert token.script is None
+    assert token.external is None
+    assert token.price is None
+
+    stale_token = dict(token_payload)
+    stale_token["carbonID"] = "999"
+    stale_token["metadata"] = [{"Key": "name", "Value": "Crown"}]
+    stale_token.pop("carbonId")
+    stale_decoded = PhantasmaRPC("http://localhost/rpc", session=FakeSession(stale_token)).get_token("CROWN")
+    assert stale_decoded.carbon_id == ""
+    assert stale_decoded.metadata is not None
+    assert stale_decoded.metadata[0].key == ""
+    assert stale_decoded.metadata[0].value == ""
+
+    stale_metadata = dict(token_payload)
+    stale_metadata["metadata"] = [{"Key": "name", "Value": "Crown"}]
+    stale_metadata_decoded = PhantasmaRPC("http://localhost/rpc", session=FakeSession(stale_metadata)).get_token(
+        "CROWN"
+    )
+    assert stale_metadata_decoded.metadata is not None
+    assert stale_metadata_decoded.metadata[0].key == ""
+    assert stale_metadata_decoded.metadata[0].value == ""
+
+    nft_payload = {
+        "id": "114421",
+        "series": "0",
+        "carbonTokenId": "4",
+        "carbonSeriesId": "1",
+        "carbonNftAddress": "ABCDEF",
+        "mint": "1",
+        "chainName": "main",
+        "ownerAddress": "Powner",
+        "creatorAddress": "Pcreator",
+        "ram": "",
+        "rom": "CAFE",
+        "status": "Active",
+        "infusion": [],
+        "properties": [{"key": "name", "value": "Crown #1"}],
+    }
+    nft = PhantasmaRPC("http://localhost/rpc", session=FakeSession(nft_payload)).get_nft("CROWN", "114421")
+    assert isinstance(nft, TokenDataResult)
+    assert nft.id == "114421"
+    assert nft.series == "0"
+    assert nft.carbon_series_id == "1"
+    assert nft.properties[0].value == "Crown #1"
+
+    stale_nft = dict(nft_payload)
+    stale_nft["ID"] = stale_nft.pop("id")
+    stale_nft_decoded = PhantasmaRPC("http://localhost/rpc", session=FakeSession(stale_nft)).get_nft("CROWN", "114421")
+    assert stale_nft_decoded.id == ""
+    assert stale_nft_decoded.series == "0"
+
+    chain = PhantasmaRPC("http://localhost/rpc", session=FakeSession({"height": 0})).get_chain("main")
+    assert isinstance(chain, ChainResult)
+    assert chain.height == 0
+    assert chain.name is None
+    assert chain.contracts is None
+
+    archive = PhantasmaRPC(
+        "http://localhost/rpc", session=FakeSession({"time": 0, "size": 0, "blockCount": 0})
+    ).get_archive("hash")
+    assert isinstance(archive, ArchiveResult)
+    assert archive.name is None
+    assert archive.missing_blocks is None
+
+    script = PhantasmaRPC(
+        "http://localhost/rpc",
+        session=FakeSession({"events": [], "result": "0601", "results": ["0601"], "oracles": []}),
+    ).invoke_raw_script("main", "0B")
+    assert script.error is None
+    assert script.state is None
+    assert script.gas is None
 
 
 def test_rpc_decodes_cursor_paginated_series() -> None:

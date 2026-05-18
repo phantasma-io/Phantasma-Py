@@ -5,6 +5,7 @@ helpers, Ed25519 keys/signatures, and Carbon wire-format support while keeping
 the project import namespace stable as `phantasma_py`.
 """
 
+from ._version import __version__
 from .carbon import (
     BurnFungibleArgs,
     BurnNonFungibleArgs,
@@ -246,6 +247,7 @@ __all__ = [
     "VMType",
     "VMVariableSchema",
     "Witness",
+    "__version__",
     "build_and_serialize_token_schemas",
     "build_create_token_series_tx",
     "build_create_token_series_tx_and_sign",
@@ -298,5 +300,3 @@ __all__ = [
     "vm_type_from_string",
     "vm_type_name",
 ]
-
-__version__ = "2.0.3"
