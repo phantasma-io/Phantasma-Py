@@ -35,14 +35,28 @@ class BrokenJsonResponse:
 
 
 class FakeSession:
-    def __init__(self, result: object, *, response_id: object = "0") -> None:
+    def __init__(self, result: object, *, response_id: object = "0", include_id: bool = True) -> None:
         self.result = result
         self.response_id = response_id
+        self.include_id = include_id
         self.requests: list[dict] = []
 
     def post(self, url: str, *, json: dict, timeout: float) -> FakeResponse:
         self.requests.append({"url": url, "json": json, "timeout": timeout})
-        return FakeResponse({"jsonrpc": "2.0", "id": self.response_id, "result": self.result})
+        body = {"jsonrpc": "2.0", "result": self.result}
+        if self.include_id:
+            body["id"] = self.response_id
+        return FakeResponse(body)
+
+
+class ScriptedSession:
+    def __init__(self, responses: list[dict]) -> None:
+        self.responses = list(responses)
+        self.requests: list[dict] = []
+
+    def post(self, url: str, *, json: dict, timeout: float) -> FakeResponse:
+        self.requests.append({"url": url, "json": json, "timeout": timeout})
+        return FakeResponse(self.responses.pop(0))
 
 
 class ErrorSession:
@@ -85,10 +99,46 @@ def test_rpc_wraps_params_and_accepts_string_response_ids() -> None:
     assert session.requests[0]["json"]["params"] == ["Pabc", False]
 
 
+def test_rpc_accepts_numeric_response_id_echo() -> None:
+    # Some transports decode the echoed JSON-RPC id as a number; it is valid only when it matches the request id.
+    session = FakeSession({"version": "1.0.0", "commit": "abc"}, response_id=0)
+    rpc = PhantasmaRPC("http://localhost/rpc", session=session)
+
+    assert rpc.get_version().commit == "abc"
+
+
 def test_rpc_rejects_response_id_mismatch() -> None:
+    # Mismatched ids must fail before callers can consume an unrelated response body.
     session = FakeSession({}, response_id="99")
     rpc = PhantasmaRPC("http://localhost/rpc", session=session)
     with pytest.raises(RPCError):
+        rpc.lookup_name("alice")
+
+
+@pytest.mark.parametrize("response_id", [0, "0", "2", {"unexpected": "object"}])
+def test_rpc_rejects_stale_or_wrong_response_ids_after_counter_advances(response_id: object) -> None:
+    session = ScriptedSession(
+        [
+            {"jsonrpc": "2.0", "id": "0", "result": {"version": "1.0.0", "commit": "abc"}},
+            {"jsonrpc": "2.0", "id": response_id, "result": {"version": "1.0.1", "commit": "def"}},
+        ]
+    )
+    rpc = PhantasmaRPC("http://localhost/rpc", session=session)
+
+    assert rpc.get_version().commit == "abc"
+    with pytest.raises(RPCError, match="id mismatch"):
+        rpc.get_version()
+
+    assert session.requests[0]["json"]["id"] == "0"
+    assert session.requests[1]["json"]["id"] == "1"
+
+
+@pytest.mark.parametrize("response_id, include_id", [(None, True), ("0", False)])
+def test_rpc_rejects_missing_or_null_response_id(response_id: object, include_id: bool) -> None:
+    # Missing and null ids are not correlated with this request and must fail closed.
+    session = FakeSession({}, response_id=response_id, include_id=include_id)
+    rpc = PhantasmaRPC("http://localhost/rpc", session=session)
+    with pytest.raises(RPCError, match="missing id"):
         rpc.lookup_name("alice")
 
 
@@ -98,6 +148,20 @@ def test_rpc_decodes_json_rpc_errors_from_http_error_status() -> None:
     with pytest.raises(RPCError, match="Execution failed") as exc:
         rpc.get_version()
     assert exc.value.code == -32603
+
+
+def test_rpc_rejects_id_mismatch_before_json_rpc_error_body() -> None:
+    session = ErrorSession(
+        {"jsonrpc": "2.0", "id": "1", "error": {"code": -32603, "message": "Execution failed"}},
+        status_code=500,
+    )
+    rpc = PhantasmaRPC("http://localhost/rpc", session=session)
+
+    with pytest.raises(RPCError, match="id mismatch") as exc:
+        rpc.get_version()
+
+    assert exc.value.code is None
+    assert "Execution failed" not in str(exc.value)
 
 
 def test_rpc_sends_empty_params_for_no_argument_calls() -> None:

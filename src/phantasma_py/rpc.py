@@ -577,8 +577,10 @@ class JsonRpcClient:
         if not isinstance(body, Mapping):
             raise RPCError("RPC response must be an object")
 
-        wire_id = body.get("id")
-        if wire_id is not None and str(wire_id) != request_id:
+        if "id" not in body or body["id"] is None:
+            raise RPCError(f"RPC response missing id for request {request_id!r}")
+        wire_id = body["id"]
+        if str(wire_id) != request_id:
             raise RPCError(f"RPC response id mismatch: got {wire_id!r}, expected {request_id!r}")
         error = body.get("error")
         if error:
