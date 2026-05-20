@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
@@ -28,7 +29,10 @@ T = TypeVar("T")
 
 
 class HTTPSession(Protocol):
-    def post(self, url: str, *, json: Mapping[str, Any], timeout: float) -> Any: ...
+    def post(self, url: str, *, json: Mapping[str, Any], timeout: float, stream: bool = False) -> Any: ...
+
+
+DEFAULT_MAX_RPC_RESPONSE_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(slots=True)
@@ -553,13 +557,82 @@ class PhantasmaVMConfigResult:
     fuel_per_contract_deploy: str = "0"
 
 
+def _content_length(response: Any) -> int | None:
+    headers = getattr(response, "headers", None)
+    if not headers:
+        return None
+    value = headers.get("content-length") or headers.get("Content-Length")
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _ensure_response_size(size: int, max_response_bytes: int) -> None:
+    if size > max_response_bytes:
+        raise RPCError(f"RPC response body exceeds {max_response_bytes} bytes")
+
+
+def _read_response_text(response: Any, max_response_bytes: int) -> str | None:
+    content_length = _content_length(response)
+    if content_length is not None:
+        _ensure_response_size(content_length, max_response_bytes)
+
+    iter_content = getattr(response, "iter_content", None)
+    if callable(iter_content):
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            raw = chunk.encode("utf-8") if isinstance(chunk, str) else bytes(chunk)
+            total += len(raw)
+            _ensure_response_size(total, max_response_bytes)
+            chunks.append(raw)
+        encoding = getattr(response, "encoding", None) or "utf-8"
+        return b"".join(chunks).decode(encoding)
+
+    content = getattr(response, "content", None)
+    if content is not None:
+        raw = content.encode("utf-8") if isinstance(content, str) else bytes(content)
+        _ensure_response_size(len(raw), max_response_bytes)
+        encoding = getattr(response, "encoding", None) or "utf-8"
+        return raw.decode(encoding)
+
+    text = getattr(response, "text", None)
+    if text is not None:
+        _ensure_response_size(len(text.encode("utf-8")), max_response_bytes)
+        return str(text)
+
+    return None
+
+
+def _read_response_json(response: Any, max_response_bytes: int) -> Any:
+    text = _read_response_text(response, max_response_bytes)
+    if text is None:
+        return response.json()
+    return json.loads(text)
+
+
 class JsonRpcClient:
     """Small JSON-RPC 2.0 client with strict response validation."""
 
-    def __init__(self, endpoint: str, *, session: HTTPSession | None = None, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        session: HTTPSession | None = None,
+        timeout: float = 30.0,
+        max_response_bytes: int = DEFAULT_MAX_RPC_RESPONSE_BYTES,
+    ) -> None:
+        if max_response_bytes <= 0:
+            raise ValueError("max_response_bytes must be positive")
         self.endpoint = endpoint
         self.session = session or requests.Session()
         self.timeout = timeout
+        self.max_response_bytes = max_response_bytes
         self._next_id = 0
 
     def call(self, method: str, *params: Any) -> Any:
@@ -567,13 +640,19 @@ class JsonRpcClient:
         self._next_id += 1
         payload: dict[str, Any] = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": list(params)}
 
-        response = self.session.post(self.endpoint, json=payload, timeout=self.timeout)
+        response = self.session.post(self.endpoint, json=payload, timeout=self.timeout, stream=True)
         try:
-            body = response.json()
+            body = _read_response_json(response, self.max_response_bytes)
+        except RPCError:
+            raise
         except Exception as exc:
             if getattr(response, "status_code", 200) >= 400:
                 raise RPCError(f"HTTP {response.status_code} from RPC endpoint") from exc
             raise RPCError("RPC response is not valid JSON") from exc
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
         if not isinstance(body, Mapping):
             raise RPCError("RPC response must be an object")
 
@@ -599,8 +678,20 @@ class JsonRpcClient:
 class PhantasmaRPC:
     """Typed client for Phantasma JSON-RPC endpoints."""
 
-    def __init__(self, endpoint: str, *, session: HTTPSession | None = None, timeout: float = 30.0) -> None:
-        self.client = JsonRpcClient(endpoint, session=session, timeout=timeout)
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        session: HTTPSession | None = None,
+        timeout: float = 30.0,
+        max_response_bytes: int = DEFAULT_MAX_RPC_RESPONSE_BYTES,
+    ) -> None:
+        self.client = JsonRpcClient(
+            endpoint,
+            session=session,
+            timeout=timeout,
+            max_response_bytes=max_response_bytes,
+        )
 
     @classmethod
     def mainnet(cls) -> PhantasmaRPC:

@@ -34,6 +34,21 @@ class BrokenJsonResponse:
         raise ValueError("not json")
 
 
+class RawResponse:
+    def __init__(self, body: bytes, status_code: int = 200) -> None:
+        self._body = body
+        self.status_code = status_code
+        self.headers = {"content-length": str(len(body))}
+        self.encoding = "utf-8"
+
+    def iter_content(self, chunk_size: int = 65536):
+        for i in range(0, len(self._body), chunk_size):
+            yield self._body[i : i + chunk_size]
+
+    def close(self) -> None:
+        pass
+
+
 class FakeSession:
     def __init__(self, result: object, *, response_id: object = "0", include_id: bool = True) -> None:
         self.result = result
@@ -41,8 +56,8 @@ class FakeSession:
         self.include_id = include_id
         self.requests: list[dict] = []
 
-    def post(self, url: str, *, json: dict, timeout: float) -> FakeResponse:
-        self.requests.append({"url": url, "json": json, "timeout": timeout})
+    def post(self, url: str, *, json: dict, timeout: float, stream: bool = False) -> FakeResponse:
+        self.requests.append({"url": url, "json": json, "timeout": timeout, "stream": stream})
         body = {"jsonrpc": "2.0", "result": self.result}
         if self.include_id:
             body["id"] = self.response_id
@@ -54,8 +69,8 @@ class ScriptedSession:
         self.responses = list(responses)
         self.requests: list[dict] = []
 
-    def post(self, url: str, *, json: dict, timeout: float) -> FakeResponse:
-        self.requests.append({"url": url, "json": json, "timeout": timeout})
+    def post(self, url: str, *, json: dict, timeout: float, stream: bool = False) -> FakeResponse:
+        self.requests.append({"url": url, "json": json, "timeout": timeout, "stream": stream})
         return FakeResponse(self.responses.pop(0))
 
 
@@ -65,8 +80,8 @@ class ErrorSession:
         self.status_code = status_code
         self.requests: list[dict] = []
 
-    def post(self, url: str, *, json: dict, timeout: float) -> FakeResponse:
-        self.requests.append({"url": url, "json": json, "timeout": timeout})
+    def post(self, url: str, *, json: dict, timeout: float, stream: bool = False) -> FakeResponse:
+        self.requests.append({"url": url, "json": json, "timeout": timeout, "stream": stream})
         return FakeResponse(self.body, self.status_code)
 
 
@@ -74,8 +89,16 @@ class BrokenJsonSession:
     def __init__(self, status_code: int = 200) -> None:
         self.status_code = status_code
 
-    def post(self, url: str, *, json: dict, timeout: float) -> BrokenJsonResponse:
+    def post(self, url: str, *, json: dict, timeout: float, stream: bool = False) -> BrokenJsonResponse:
         return BrokenJsonResponse(self.status_code)
+
+
+class RawSession:
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+
+    def post(self, url: str, *, json: dict, timeout: float, stream: bool = False) -> RawResponse:
+        return RawResponse(self.body)
 
 
 class SpyRPC(PhantasmaRPC):
@@ -97,6 +120,7 @@ def test_rpc_wraps_params_and_accepts_string_response_ids() -> None:
     assert isinstance(account, AccountResult)
     assert account.balances[0].symbol == "SOUL"
     assert session.requests[0]["json"]["params"] == ["Pabc", False]
+    assert session.requests[0]["stream"] is True
 
 
 def test_rpc_accepts_numeric_response_id_echo() -> None:
@@ -189,6 +213,14 @@ def test_rpc_reports_non_json_http_and_rpc_bodies() -> None:
 
     rpc = PhantasmaRPC("http://localhost/rpc", session=BrokenJsonSession(status_code=500))
     with pytest.raises(RPCError, match="HTTP 500"):
+        rpc.get_version()
+
+
+def test_rpc_rejects_oversized_response_body() -> None:
+    body = b'{"jsonrpc":"2.0","id":"0","result":"0123456789ABCDEF"}'
+    rpc = PhantasmaRPC("http://localhost/rpc", session=RawSession(body), max_response_bytes=len(body) - 1)
+
+    with pytest.raises(RPCError, match="exceeds"):
         rpc.get_version()
 
 
