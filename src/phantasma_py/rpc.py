@@ -70,9 +70,19 @@ class GovernanceResult:
 
 @dataclass(slots=True)
 class OrganizationResult:
-    id: str | None = None
     name: str | None = None
-    members: list[str] | None = None
+    owner: str | None = None
+    carbon_owner: str | None = None
+    metadata: list[TokenPropertyResult] = field(default_factory=list)
+    member_count: str | None = None
+
+
+@dataclass(slots=True)
+class OrganizationMemberResult:
+    address: str | None = None
+    carbon_address: str | None = None
+    is_member: bool = False
+    member_time: int | None = None
 
 
 @dataclass(slots=True)
@@ -823,14 +833,36 @@ class PhantasmaRPC:
     def get_contracts(self, chain: str = "main", *, extended: bool = True) -> list[ContractResult]:
         return _decode_list(ContractResult, self.call("getContracts", chain, extended))
 
-    def get_organization(self, organization_id: str, *, extended: bool = True) -> OrganizationResult:
-        return _decode_dataclass(OrganizationResult, self.call("getOrganization", organization_id, extended))
+    def get_organization(self, name: str, *, include_member_count: bool = False) -> OrganizationResult:
+        return _decode_dataclass(OrganizationResult, self.call("getOrganization", name, include_member_count))
 
-    def get_organization_by_name(self, name: str, *, extended: bool = True) -> OrganizationResult:
-        return _decode_dataclass(OrganizationResult, self.call("getOrganizationByName", name, extended))
+    def get_organizations(
+        self, *, page_size: int = 10, cursor: str = "", include_member_count: bool = False
+    ) -> CursorPaginatedResult[list[OrganizationResult]]:
+        return _decode_cursor(
+            OrganizationResult, self.call("getOrganizations", page_size, cursor, include_member_count)
+        )
 
-    def get_organizations(self, *, extended: bool = False) -> list[OrganizationResult]:
-        return _decode_list(OrganizationResult, self.call("getOrganizations", extended))
+    def get_organization_members(
+        self, name: str, *, page_size: int = 10, cursor: str = "", include_member_time: bool = True
+    ) -> CursorPaginatedResult[list[OrganizationMemberResult]]:
+        return _decode_cursor(
+            OrganizationMemberResult,
+            self.call("getOrganizationMembers", name, page_size, cursor, include_member_time),
+        )
+
+    def get_organization_member(
+        self,
+        name: str,
+        address: str,
+        *,
+        check_address_reserved_byte: bool = True,
+        address_type: str = "Phantasma",
+    ) -> OrganizationMemberResult:
+        return _decode_dataclass(
+            OrganizationMemberResult,
+            self.call("getOrganizationMember", name, address, check_address_reserved_byte, address_type),
+        )
 
     def get_leaderboard(self, name: str) -> LeaderboardResult:
         return _decode_dataclass(LeaderboardResult, self.call("getLeaderboard", name))

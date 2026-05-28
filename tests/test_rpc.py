@@ -7,6 +7,8 @@ from phantasma_py.rpc import (
     BlockResult,
     ChainResult,
     CursorPaginatedResult,
+    OrganizationMemberResult,
+    OrganizationResult,
     PhantasmaRPC,
     ScriptResult,
     TokenDataResult,
@@ -406,6 +408,55 @@ def test_rpc_decodes_cursor_paginated_series() -> None:
     assert session.requests[0]["json"]["params"] == ["ART", 7, 50, ""]
 
 
+def test_rpc_decodes_organization_contract_shapes() -> None:
+    org = PhantasmaRPC(
+        "http://localhost/rpc",
+        session=FakeSession(
+            {
+                "name": "masters",
+                "owner": "Powner",
+                "carbonOwner": "0xowner",
+                "metadata": [{"key": "role", "value": "validators"}],
+                "memberCount": "2",
+            }
+        ),
+    ).get_organization("masters", include_member_count=True)
+    assert isinstance(org, OrganizationResult)
+    assert org.name == "masters"
+    assert org.carbon_owner == "0xowner"
+    assert org.metadata[0].key == "role"
+    assert org.member_count == "2"
+
+    member = PhantasmaRPC(
+        "http://localhost/rpc",
+        session=FakeSession({"address": "Pmember", "carbonAddress": "0xmember", "isMember": True, "memberTime": 123}),
+    ).get_organization_member("masters", "Pmember")
+    assert isinstance(member, OrganizationMemberResult)
+    assert member.carbon_address == "0xmember"
+    assert member.is_member is True
+    assert member.member_time == 123
+
+
+def test_rpc_organization_helpers_use_final_name_first_contract() -> None:
+    session = ScriptedSession(
+        [
+            {"jsonrpc": "2.0", "id": "0", "result": {"result": [], "cursor": ""}},
+            {"jsonrpc": "2.0", "id": "1", "result": {"address": "Pmember", "isMember": True}},
+        ]
+    )
+    rpc = PhantasmaRPC("http://localhost/rpc", session=session)
+
+    members = rpc.get_organization_members("masters", page_size=2, cursor="", include_member_time=True)
+    member = rpc.get_organization_member("masters", "Pmember", check_address_reserved_byte=True, address_type="Carbon")
+
+    assert members.result == []
+    assert member.is_member is True
+    assert session.requests[0]["json"]["method"] == "getOrganizationMembers"
+    assert session.requests[0]["json"]["params"] == ["masters", 2, "", True]
+    assert session.requests[1]["json"]["method"] == "getOrganizationMember"
+    assert session.requests[1]["json"]["params"] == ["masters", "Pmember", True, "Carbon"]
+
+
 def test_rpc_alias_methods_preserve_reference_parameter_order() -> None:
     count_session = FakeSession(0)
     count_rpc = PhantasmaRPC("http://localhost/rpc", session=count_session)
@@ -457,7 +508,34 @@ def test_rpc_wrapper_parameter_shapes_cover_public_alias_surface() -> None:
         (SpyRPC({}), lambda rpc: rpc.get_latest_block("main"), "getLatestBlock", ("main",)),
         (SpyRPC({}), lambda rpc: rpc.get_transaction("hash"), "getTransaction", ("hash",)),
         (SpyRPC({}), lambda rpc: rpc.get_contract_by_address("main", "Sabc"), "getContractByAddress", ("main", "Sabc")),
-        (SpyRPC([]), lambda rpc: rpc.get_organizations(extended=True), "getOrganizations", (True,)),
+        (
+            SpyRPC({"result": [], "cursor": ""}),
+            lambda rpc: rpc.get_organizations(page_size=2, cursor="cursor", include_member_count=True),
+            "getOrganizations",
+            (2, "cursor", True),
+        ),
+        (
+            SpyRPC({"name": "masters"}),
+            lambda rpc: rpc.get_organization("masters", include_member_count=True),
+            "getOrganization",
+            ("masters", True),
+        ),
+        (
+            SpyRPC({"result": [], "cursor": ""}),
+            lambda rpc: rpc.get_organization_members(
+                "masters", page_size=2, cursor="cursor", include_member_time=False
+            ),
+            "getOrganizationMembers",
+            ("masters", 2, "cursor", False),
+        ),
+        (
+            SpyRPC({}),
+            lambda rpc: rpc.get_organization_member(
+                "masters", "Pmember", check_address_reserved_byte=True, address_type="Phantasma"
+            ),
+            "getOrganizationMember",
+            ("masters", "Pmember", True, "Phantasma"),
+        ),
         (SpyRPC({}), lambda rpc: rpc.get_leaderboard("board"), "getLeaderboard", ("board",)),
         (SpyRPC({}), lambda rpc: rpc.get_token_with_id("SOUL", True, 2), "getToken", ("SOUL", True, 2)),
         (
