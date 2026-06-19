@@ -29,7 +29,15 @@ T = TypeVar("T")
 
 
 class HTTPSession(Protocol):
-    def post(self, url: str, *, json: Mapping[str, Any], timeout: float, stream: bool = False) -> Any: ...
+    def post(
+        self,
+        url: str,
+        *,
+        json: Mapping[str, Any],
+        timeout: float,
+        stream: bool = False,
+        headers: Mapping[str, str] | None = None,
+    ) -> Any: ...
 
 
 DEFAULT_MAX_RPC_RESPONSE_BYTES = 16 * 1024 * 1024
@@ -636,6 +644,7 @@ class JsonRpcClient:
         session: HTTPSession | None = None,
         timeout: float = 30.0,
         max_response_bytes: int = DEFAULT_MAX_RPC_RESPONSE_BYTES,
+        api_key: str | None = None,
     ) -> None:
         if max_response_bytes <= 0:
             raise ValueError("max_response_bytes must be positive")
@@ -643,6 +652,7 @@ class JsonRpcClient:
         self.session = session or requests.Session()
         self.timeout = timeout
         self.max_response_bytes = max_response_bytes
+        self.api_key = api_key or None
         self._next_id = 0
 
     def call(self, method: str, *params: Any) -> Any:
@@ -650,7 +660,8 @@ class JsonRpcClient:
         self._next_id += 1
         payload: dict[str, Any] = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": list(params)}
 
-        response = self.session.post(self.endpoint, json=payload, timeout=self.timeout, stream=True)
+        headers = {"X-Api-Key": self.api_key} if self.api_key else None
+        response = self.session.post(self.endpoint, json=payload, timeout=self.timeout, stream=True, headers=headers)
         try:
             body = _read_response_json(response, self.max_response_bytes)
         except RPCError:
@@ -667,6 +678,14 @@ class JsonRpcClient:
             raise RPCError("RPC response must be an object")
 
         if "id" not in body or body["id"] is None:
+            # A response with no id is not a JSON-RPC envelope. An HTTP-level rejection (401 keys-only,
+            # 429 rate limit, ...) is surfaced by its status; a 2xx with no id is a malformed response.
+            status = getattr(response, "status_code", 200)
+            if status >= 400:
+                detail = body.get("error") or body.get("message")
+                if isinstance(detail, str):
+                    raise RPCError(f"HTTP {status}: {detail}")
+                raise RPCError(f"HTTP {status} from RPC endpoint")
             raise RPCError(f"RPC response missing id for request {request_id!r}")
         wire_id = body["id"]
         if str(wire_id) != request_id:
@@ -695,12 +714,14 @@ class PhantasmaRPC:
         session: HTTPSession | None = None,
         timeout: float = 30.0,
         max_response_bytes: int = DEFAULT_MAX_RPC_RESPONSE_BYTES,
+        api_key: str | None = None,
     ) -> None:
         self.client = JsonRpcClient(
             endpoint,
             session=session,
             timeout=timeout,
             max_response_bytes=max_response_bytes,
+            api_key=api_key,
         )
 
     @classmethod

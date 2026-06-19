@@ -58,8 +58,10 @@ class FakeSession:
         self.include_id = include_id
         self.requests: list[dict] = []
 
-    def post(self, url: str, *, json: dict, timeout: float, stream: bool = False) -> FakeResponse:
-        self.requests.append({"url": url, "json": json, "timeout": timeout, "stream": stream})
+    def post(
+        self, url: str, *, json: dict, timeout: float, stream: bool = False, headers: dict | None = None
+    ) -> FakeResponse:
+        self.requests.append({"url": url, "json": json, "timeout": timeout, "stream": stream, "headers": headers})
         body = {"jsonrpc": "2.0", "result": self.result}
         if self.include_id:
             body["id"] = self.response_id
@@ -71,8 +73,10 @@ class ScriptedSession:
         self.responses = list(responses)
         self.requests: list[dict] = []
 
-    def post(self, url: str, *, json: dict, timeout: float, stream: bool = False) -> FakeResponse:
-        self.requests.append({"url": url, "json": json, "timeout": timeout, "stream": stream})
+    def post(
+        self, url: str, *, json: dict, timeout: float, stream: bool = False, headers: dict | None = None
+    ) -> FakeResponse:
+        self.requests.append({"url": url, "json": json, "timeout": timeout, "stream": stream, "headers": headers})
         return FakeResponse(self.responses.pop(0))
 
 
@@ -82,8 +86,10 @@ class ErrorSession:
         self.status_code = status_code
         self.requests: list[dict] = []
 
-    def post(self, url: str, *, json: dict, timeout: float, stream: bool = False) -> FakeResponse:
-        self.requests.append({"url": url, "json": json, "timeout": timeout, "stream": stream})
+    def post(
+        self, url: str, *, json: dict, timeout: float, stream: bool = False, headers: dict | None = None
+    ) -> FakeResponse:
+        self.requests.append({"url": url, "json": json, "timeout": timeout, "stream": stream, "headers": headers})
         return FakeResponse(self.body, self.status_code)
 
 
@@ -91,7 +97,9 @@ class BrokenJsonSession:
     def __init__(self, status_code: int = 200) -> None:
         self.status_code = status_code
 
-    def post(self, url: str, *, json: dict, timeout: float, stream: bool = False) -> BrokenJsonResponse:
+    def post(
+        self, url: str, *, json: dict, timeout: float, stream: bool = False, headers: dict | None = None
+    ) -> BrokenJsonResponse:
         return BrokenJsonResponse(self.status_code)
 
 
@@ -99,7 +107,9 @@ class RawSession:
     def __init__(self, body: bytes) -> None:
         self.body = body
 
-    def post(self, url: str, *, json: dict, timeout: float, stream: bool = False) -> RawResponse:
+    def post(
+        self, url: str, *, json: dict, timeout: float, stream: bool = False, headers: dict | None = None
+    ) -> RawResponse:
         return RawResponse(self.body)
 
 
@@ -613,3 +623,27 @@ def test_send_transaction_hash_extraction_paths() -> None:
         PhantasmaRPC("http://localhost/rpc", session=FakeSession({"error": "bad"})).send_raw_transaction("00")
     with pytest.raises(RPCError, match="does not contain a hash"):
         PhantasmaRPC("http://localhost/rpc", session=FakeSession({})).send_raw_transaction("00")
+
+
+def test_rpc_sends_api_key_header_when_configured() -> None:
+    session = FakeSession({"version": "1.0.0", "commit": "abc"})
+    rpc = PhantasmaRPC("http://localhost/rpc", session=session, api_key="test-key")
+    rpc.get_version()
+    assert session.requests[0]["headers"] == {"X-Api-Key": "test-key"}
+
+
+def test_rpc_omits_api_key_header_when_not_configured() -> None:
+    session = FakeSession({"version": "1.0.0", "commit": "abc"})
+    rpc = PhantasmaRPC("http://localhost/rpc", session=session)
+    rpc.get_version()
+    assert session.requests[0]["headers"] is None
+
+
+def test_rpc_surfaces_http_status_for_id_less_rejection() -> None:
+    # 401 keys-only returns {"error": "..."} with no JSON-RPC id; surface the status, not "missing id".
+    rpc = PhantasmaRPC("http://localhost/rpc", session=ErrorSession({"error": "API key required"}, status_code=401))
+    with pytest.raises(RPCError, match="HTTP 401"):
+        rpc.get_version()
+    rpc = PhantasmaRPC("http://localhost/rpc", session=ErrorSession({"error": "API key required"}, status_code=401))
+    with pytest.raises(RPCError, match="API key required"):
+        rpc.get_version()
