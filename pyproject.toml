@@ -8,7 +8,7 @@ version = "2.1.2"
 description = "Typed Python SDK for the Phantasma blockchain with support for the Phoenix chain update"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "Phantasma", email = "info@phantasma.info" }]
 dependencies = [
     "cryptography>=42",
