@@ -121,8 +121,10 @@ def test_chain_and_gas_config_round_trip() -> None:
     assert serialize(chain).hex() == "01020304ddccbbaa60ea0000e8030000"
     assert deserialize(serialize(chain), ChainConfig) == chain
 
+    # version=0: the 113-byte image is exactly the version-0 layout; version >= 1 configs
+    # append the gas-model-v2 tail on the wire (see test_gas_config_fee.py).
     gas = GasConfig(
-        version=1,
+        version=0,
         max_name_length=2,
         max_token_symbol_length=3,
         fee_shift=4,
@@ -144,7 +146,7 @@ def test_chain_and_gas_config_round_trip() -> None:
     )
     raw = serialize(gas)
     assert len(raw) == 113
-    assert raw[:8].hex() == "0102030405000000"
+    assert raw[:8].hex() == "0002030405000000"
     assert raw[-9:].hex() == "120000000000000013"
     assert deserialize(raw, GasConfig) == gas
 
