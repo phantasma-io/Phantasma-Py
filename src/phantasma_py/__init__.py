@@ -7,6 +7,9 @@ the project import namespace stable as `phantasma_py`.
 
 from ._version import __version__
 from .carbon import (
+    GAS_MODEL_V2_UNITS_PER_BLOCK_DATA_BYTE,
+    NATIVE_SIGNATURE_BYTES,
+    WITNESS_ARRAY_ENTRY_BYTES,
     BurnFungibleArgs,
     BurnNonFungibleArgs,
     Bytes16,
@@ -42,6 +45,8 @@ from .carbon import (
     MintPhantasmaNonFungibleArgs,
     ModuleID,
     MsgCallArgSections,
+    NativeFeeEstimate,
+    NativeFeeKind,
     NFTMintInfo,
     PhantasmaNFTMintInfo,
     PhantasmaNFTMintResult,
@@ -118,6 +123,8 @@ from .carbon import (
     check_token_symbol,
     default_market_config,
     deserialize,
+    envelope_bytes_for,
+    estimate_native_fee,
     get_nft_address,
     now_unix_millis,
     parse_create_token_result,
@@ -141,7 +148,7 @@ from .carbon import (
 from .carbon import VMType as CarbonVMType
 from .crypto import Address, AddressKind, Ed25519Signature, Hash, PhantasmaKeys, SignatureKind
 from .errors import BuilderError, CryptoError, EncodingError, PhantasmaError, RPCError, SerializationError
-from .rpc import JsonRpcClient, PhantasmaRPC
+from .rpc import GasConfigDataResult, GasConfigResult, JsonRpcClient, PhantasmaRPC
 from .transaction import Transaction, tx_state_is_fault, tx_state_is_success
 from .vm import Opcode, ScriptBuilder, VMObject, VMType
 
@@ -167,7 +174,10 @@ __all__ = [
     "Ed25519Signature",
     "EncodingError",
     "FeeOptions",
+    "GAS_MODEL_V2_UNITS_PER_BLOCK_DATA_BYTE",
     "GasConfig",
+    "GasConfigDataResult",
+    "GasConfigResult",
     "Hash",
     "IntX",
     "JsonRpcClient",
@@ -191,6 +201,9 @@ __all__ = [
     "MsgCallArgSections",
     "ModuleID",
     "NFTMintInfo",
+    "NATIVE_SIGNATURE_BYTES",
+    "NativeFeeEstimate",
+    "NativeFeeKind",
     "Opcode",
     "PhantasmaError",
     "PhantasmaKeys",
@@ -241,6 +254,7 @@ __all__ = [
     "VMNamedDynamicVariable",
     "VMNamedVariableSchema",
     "VMObject",
+    "WITNESS_ARRAY_ENTRY_BYTES",
     "VMStructArray",
     "VMStructFlags",
     "VMStructSchema",
@@ -293,6 +307,8 @@ __all__ = [
     "sign_and_serialize_tx_msg_hex",
     "sign_tx_msg",
     "token_schemas_from_json",
+    "envelope_bytes_for",
+    "estimate_native_fee",
     "tx_state_is_fault",
     "tx_state_is_success",
     "unpack_nft_instance_id",

@@ -13,6 +13,7 @@ import requests
 
 from .carbon import (
     Bytes32,
+    GasConfig,
     SignedTxMsg,
     TxMsg,
     parse_create_token_result,
@@ -184,6 +185,118 @@ class ChainResult:
     organization: str | None = None
     contracts: list[str] | None = None
     dapps: list[str] | None = None
+
+
+@dataclass(slots=True)
+class GasConfigDataResult:
+    """JSON shape of the on-chain GasConfig served by getGasConfig.
+
+    64-bit values ride as decimal strings on the wire (they can exceed the 2^53 precision of
+    JSON numbers). Fields after gas_burn_ratio_shift exist only when the config version is >= 1
+    (gas-model-v2) and are omitted from v1 responses.
+    """
+
+    version: int = 0
+    max_name_length: int = 0
+    max_token_symbol_length: int = 0
+    fee_shift: int = 0
+    max_structure_size: int = 0
+    fee_multiplier: str | None = None
+    gas_token_id: str | None = None
+    data_token_id: str | None = None
+    minimum_gas_offer: str | None = None
+    data_escrow_per_row: str | None = None
+    gas_fee_transfer: str | None = None
+    gas_fee_query: str | None = None
+    gas_fee_create_token_base: str | None = None
+    gas_fee_create_token_symbol: str | None = None
+    gas_fee_create_token_series: str | None = None
+    gas_fee_per_byte: str | None = None
+    gas_fee_register_name: str | None = None
+    gas_burn_ratio_mul: str | None = None
+    gas_burn_ratio_shift: int = 0
+    minimum_gas_bill: str | None = None
+    gas_producer_ratio_mul: str | None = None
+    gas_producer_ratio_shift: int | None = None
+    gas_dapp_ratio_mul: str | None = None
+    gas_dapp_ratio_shift: int | None = None
+    policy_fee_create_token_base: str | None = None
+    policy_fee_create_token_symbol: str | None = None
+    policy_fee_create_token_series: str | None = None
+    policy_fee_register_name: str | None = None
+    legacy_data_escrow_per_row: str | None = None
+
+
+@dataclass(slots=True)
+class GasConfigResult:
+    """getGasConfig response: the current gas config plus fee-estimation chain parameters."""
+
+    gas_model_version: int = 0
+    gas_config: GasConfigDataResult | None = None
+    block_rate_target: int = 0
+    expiry_window: int = 0
+    units_per_block_data_byte: int | None = None
+
+    def to_gas_config(self) -> GasConfig:
+        """Convert to the wire-format GasConfig consumed by estimate_native_fee.
+
+        Raises RPCError on malformed numeric strings and on a v2 response missing tail fields:
+        estimating fees from silently zeroed v2 prices would produce rejected transactions.
+        """
+        data = self.gas_config
+        if data is None:
+            raise RPCError("getGasConfig response has no gasConfig section")
+        config = GasConfig(
+            version=data.version,
+            max_name_length=data.max_name_length,
+            max_token_symbol_length=data.max_token_symbol_length,
+            fee_shift=data.fee_shift,
+            max_structure_size=data.max_structure_size,
+            fee_multiplier=_parse_u64(data.fee_multiplier, "feeMultiplier"),
+            gas_token_id=_parse_u64(data.gas_token_id, "gasTokenId"),
+            data_token_id=_parse_u64(data.data_token_id, "dataTokenId"),
+            minimum_gas_offer=_parse_u64(data.minimum_gas_offer, "minimumGasOffer"),
+            data_escrow_per_row=_parse_u64(data.data_escrow_per_row, "dataEscrowPerRow"),
+            gas_fee_transfer=_parse_u64(data.gas_fee_transfer, "gasFeeTransfer"),
+            gas_fee_query=_parse_u64(data.gas_fee_query, "gasFeeQuery"),
+            gas_fee_create_token_base=_parse_u64(data.gas_fee_create_token_base, "gasFeeCreateTokenBase"),
+            gas_fee_create_token_symbol=_parse_u64(data.gas_fee_create_token_symbol, "gasFeeCreateTokenSymbol"),
+            gas_fee_create_token_series=_parse_u64(data.gas_fee_create_token_series, "gasFeeCreateTokenSeries"),
+            gas_fee_per_byte=_parse_u64(data.gas_fee_per_byte, "gasFeePerByte"),
+            gas_fee_register_name=_parse_u64(data.gas_fee_register_name, "gasFeeRegisterName"),
+            gas_burn_ratio_mul=_parse_u64(data.gas_burn_ratio_mul, "gasBurnRatioMul"),
+            gas_burn_ratio_shift=data.gas_burn_ratio_shift,
+        )
+        if config.version >= 1:
+            config.minimum_gas_bill = _parse_u64(data.minimum_gas_bill, "minimumGasBill")
+            config.gas_producer_ratio_mul = _parse_u64(data.gas_producer_ratio_mul, "gasProducerRatioMul")
+            config.gas_dapp_ratio_mul = _parse_u64(data.gas_dapp_ratio_mul, "gasDappRatioMul")
+            config.policy_fee_create_token_base = _parse_u64(
+                data.policy_fee_create_token_base, "policyFeeCreateTokenBase"
+            )
+            config.policy_fee_create_token_symbol = _parse_u64(
+                data.policy_fee_create_token_symbol, "policyFeeCreateTokenSymbol"
+            )
+            config.policy_fee_create_token_series = _parse_u64(
+                data.policy_fee_create_token_series, "policyFeeCreateTokenSeries"
+            )
+            config.policy_fee_register_name = _parse_u64(data.policy_fee_register_name, "policyFeeRegisterName")
+            config.legacy_data_escrow_per_row = _parse_u64(data.legacy_data_escrow_per_row, "legacyDataEscrowPerRow")
+            if data.gas_producer_ratio_shift is None:
+                raise RPCError("getGasConfig field gasProducerRatioShift is missing")
+            if data.gas_dapp_ratio_shift is None:
+                raise RPCError("getGasConfig field gasDappRatioShift is missing")
+            config.gas_producer_ratio_shift = data.gas_producer_ratio_shift
+            config.gas_dapp_ratio_shift = data.gas_dapp_ratio_shift
+        return config
+
+
+def _parse_u64(value: str | None, field_name: str) -> int:
+    if value is None or value == "":
+        raise RPCError(f"getGasConfig field {field_name} is missing or empty")
+    if not value.isdigit():
+        raise RPCError(f"getGasConfig field {field_name} is not a decimal integer: {value}")
+    return int(value)
 
 
 @dataclass(slots=True)
@@ -838,6 +951,14 @@ class PhantasmaRPC:
 
     def get_chain(self, name: str = "main", *, extended: bool = True) -> ChainResult:
         return _decode_dataclass(ChainResult, self.call("getChain", name, extended))
+
+    def get_gas_config(self) -> GasConfigResult:
+        """Current on-chain gas configuration plus fee-estimation chain parameters.
+
+        Changes only via governance resolutions, so the result is safe to cache. Feed
+        GasConfigResult.to_gas_config() into estimate_native_fee() for Tier-1 fee estimates.
+        """
+        return _decode_dataclass(GasConfigResult, self.call("getGasConfig"))
 
     def get_nexus(self, *, extended: bool = True) -> NexusResult:
         return _decode_dataclass(NexusResult, self.call("getNexus", extended))

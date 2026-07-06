@@ -15,7 +15,7 @@ import struct
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from enum import IntEnum, IntFlag
+from enum import Enum, IntEnum, IntFlag
 from typing import Any, ClassVar, Protocol, Self, TypeVar, cast
 
 from .crypto import Address, AddressKind, PhantasmaKeys
@@ -907,6 +907,14 @@ class ChainConfig:
 
 @dataclass(slots=True)
 class GasConfig:
+    """On-chain gas configuration (governance module).
+
+    The gas-model-v2 extension fields serialize only for version >= 1, mirroring the node's
+    data_blockchain.h wire format exactly: the version-0 byte image is frozen forever for
+    historical replay, and a version>=1 image truncated to the v0 length fails to parse (the
+    tail read raises on end of stream).
+    """
+
     version: int = 0
     max_name_length: int = 0
     max_token_symbol_length: int = 0
@@ -926,6 +934,26 @@ class GasConfig:
     gas_fee_register_name: int = 0
     gas_burn_ratio_mul: int = 0
     gas_burn_ratio_shift: int = 0
+    # Gas-model-v2 extension (version >= 1 only). minimum_gas_bill floors every settled bill
+    # (kcal-base); the producer/dapp ratio pairs split the bill like the burn ratio; the policy
+    # fees are direct kcal-base product prices replacing the v1 unit-priced create/name fields;
+    # legacy_data_escrow_per_row is the frozen pre-flip storage price (pre-flip rows refund at
+    # it, immutable after the flip).
+    minimum_gas_bill: int = 0
+    gas_producer_ratio_mul: int = 0
+    gas_producer_ratio_shift: int = 0
+    gas_dapp_ratio_mul: int = 0
+    gas_dapp_ratio_shift: int = 0
+    policy_fee_create_token_base: int = 0
+    policy_fee_create_token_symbol: int = 0
+    policy_fee_create_token_series: int = 0
+    policy_fee_register_name: int = 0
+    legacy_data_escrow_per_row: int = 0
+
+    @property
+    def has_gas_model_v2(self) -> bool:
+        """True when this config activates the gas-model-v2 billing rules (version >= 1)."""
+        return self.version >= 1
 
     def write_carbon(self, writer: CarbonWriter) -> None:
         writer.write1(self.version)
@@ -947,10 +975,23 @@ class GasConfig:
         writer.write8u(self.gas_fee_register_name)
         writer.write8u(self.gas_burn_ratio_mul)
         writer.write1(self.gas_burn_ratio_shift)
+        if self.version == 0:
+            # Version-0 wire image must stay byte-identical to the pre-v2 layout.
+            return
+        writer.write8u(self.minimum_gas_bill)
+        writer.write8u(self.gas_producer_ratio_mul)
+        writer.write1(self.gas_producer_ratio_shift)
+        writer.write8u(self.gas_dapp_ratio_mul)
+        writer.write1(self.gas_dapp_ratio_shift)
+        writer.write8u(self.policy_fee_create_token_base)
+        writer.write8u(self.policy_fee_create_token_symbol)
+        writer.write8u(self.policy_fee_create_token_series)
+        writer.write8u(self.policy_fee_register_name)
+        writer.write8u(self.legacy_data_escrow_per_row)
 
     @classmethod
     def read_carbon(cls, reader: CarbonReader) -> GasConfig:
-        return cls(
+        config = cls(
             reader.read1(),
             reader.read1(),
             reader.read1(),
@@ -971,6 +1012,21 @@ class GasConfig:
             reader.read8u(),
             reader.read1(),
         )
+        if config.version == 0:
+            # Version-0 rows carry no v2 tail; the dataclass defaults already zero it.
+            return config
+        # version >= 1: the tail is mandatory; a truncated image raises (end of stream).
+        config.minimum_gas_bill = reader.read8u()
+        config.gas_producer_ratio_mul = reader.read8u()
+        config.gas_producer_ratio_shift = reader.read1()
+        config.gas_dapp_ratio_mul = reader.read8u()
+        config.gas_dapp_ratio_shift = reader.read1()
+        config.policy_fee_create_token_base = reader.read8u()
+        config.policy_fee_create_token_symbol = reader.read8u()
+        config.policy_fee_create_token_series = reader.read8u()
+        config.policy_fee_register_name = reader.read8u()
+        config.legacy_data_escrow_per_row = reader.read8u()
+        return config
 
 
 @dataclass(slots=True)
@@ -2099,6 +2155,268 @@ def _parse_mint_count(value: int | Sequence[Any], method_name: str) -> int:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return _parse_positive_count(len(value), method_name)
     return _parse_positive_count(value, method_name)
+
+
+# --- Tier-1 fee estimator -----------------------------------------------------------------
+# Closed-form gas/data offers for native operations, exact under both gas models (selected by
+# GasConfig.version). Mirrors the validator billing formula (node blockchain.cpp settlement +
+# token/governance contract gas sites); any change to those formulas ships as a new gas-model
+# version, never silently. The unused part of a gas offer is always refunded, so generous
+# estimates only lock the balance for the block, they cost nothing.
+
+#: Gas model v2 price of block-carried bytes, in gas units per byte. A versioned consensus
+#: constant of the v2 gas model (node data_blockchain.h kGasModelV2UnitsPerBlockDataByte),
+#: deliberately not part of the on-chain config.
+GAS_MODEL_V2_UNITS_PER_BLOCK_DATA_BYTE = 25
+
+#: Serialized size of one witness-array entry (32-byte address + 64-byte signature).
+WITNESS_ARRAY_ENTRY_BYTES = 96
+
+#: Serialized size of one bare signature (native TxTypes carry no witness array).
+NATIVE_SIGNATURE_BYTES = 64
+
+_U64_MAX = (1 << 64) - 1
+
+
+class NativeFeeKind(Enum):
+    """Native operation kinds supported by the Tier-1 fee estimator."""
+
+    TRANSFER_FUNGIBLE = "transfer_fungible"
+    TRANSFER_NON_FUNGIBLE = "transfer_non_fungible"
+    MINT_FUNGIBLE = "mint_fungible"
+    MINT_NON_FUNGIBLE = "mint_non_fungible"
+    BURN_FUNGIBLE = "burn_fungible"
+    BURN_NON_FUNGIBLE = "burn_non_fungible"
+    CREATE_TOKEN = "create_token"
+    CREATE_TOKEN_SERIES = "create_token_series"
+    REGISTER_NAME = "register_name"
+    #: Generic Phantasma VM script transaction (AllowGas/SpendGas pattern: stake, marketplace,
+    #: custom contract calls). Script opcode costs are not closed-form in Tier-1; the estimate
+    #: budgets script_units_allowance VM work units on top of the byte fee. For an exact script
+    #: bill use the node-side Tier-2 estimator once available.
+    SCRIPT = "script"
+
+
+_NATIVE_SIGNATURE_KINDS = frozenset(
+    {
+        NativeFeeKind.TRANSFER_FUNGIBLE,
+        NativeFeeKind.TRANSFER_NON_FUNGIBLE,
+        NativeFeeKind.MINT_FUNGIBLE,
+        NativeFeeKind.MINT_NON_FUNGIBLE,
+        NativeFeeKind.BURN_FUNGIBLE,
+        NativeFeeKind.BURN_NON_FUNGIBLE,
+    }
+)
+
+
+@dataclass(slots=True)
+class NativeFeeEstimate:
+    """Result of a Tier-1 fee estimate.
+
+    Gas values are kcal-base (1 KCAL = 1e10 kcal-base); max_data is in data-token atoms
+    (SOUL, 1 SOUL = 1e8 atoms). max_gas includes deterministic headroom (refunded down to the
+    actual bill); expected_gas_bill is the chain formula for exactly the provided inputs.
+    """
+
+    max_gas: int
+    max_data: int
+    expected_gas_bill: int
+
+
+def envelope_bytes_for(kind: NativeFeeKind, serialized_message_length: int, witness_count: int = 1) -> int:
+    """Envelope size (signed tx bytes as carried in the block) for a serialized message.
+
+    Witness layout mirrors SignedTxMsg: native TxTypes append bare 64-byte signatures (one, or
+    two for the _GasPayer variants); Call/Trade/Phantasma txs append a length-prefixed witness
+    array (32-byte address + 64-byte signature per entry).
+    """
+    if serialized_message_length < 0:
+        raise ValueError("serialized_message_length must not be negative")
+    if witness_count < 0:
+        raise ValueError("witness_count must not be negative")
+    if kind in _NATIVE_SIGNATURE_KINDS:
+        return serialized_message_length + NATIVE_SIGNATURE_BYTES * witness_count
+    # CreateToken/CreateTokenSeries/RegisterName ride TxTypes.Call; Script rides
+    # TxTypes.Phantasma - both carry the witness array form.
+    return serialized_message_length + 4 + WITNESS_ARRAY_ENTRY_BYTES * witness_count
+
+
+def estimate_native_fee(
+    kind: NativeFeeKind,
+    config: GasConfig,
+    *,
+    count: int = 1,
+    symbol_length: int = 0,
+    name_length: int = 0,
+    envelope_bytes: int = 0,
+    payload_bytes: int = 0,
+    fresh_rows: int = -1,
+    rom_ram_bytes: int = 0,
+    script_units_allowance: int = 5000,
+) -> NativeFeeEstimate:
+    """Estimate max_gas/max_data for a native operation under the given on-chain gas config.
+
+    Defaults produce a safe single-signer estimate; pass exact values (envelope_bytes from
+    envelope_bytes_for, fresh_rows for the rows the tx can actually create) for exactness.
+    fresh_rows=-1 selects the per-kind worst-case default; SOUL/KCAL balance rows are free and
+    never count. script_units_allowance defaults to 5000 VM units, above every script seen in
+    mainnet history (max 3392).
+    """
+    if count < 1:
+        raise ValueError("count must be a positive integer")
+    v2 = config.has_gas_model_v2
+
+    # Work units consumed by the operation itself (the ConsumeGas amounts in the token /
+    # governance contracts) and, under v2, the direct kcal-base policy fee that replaces the
+    # v1 unit-priced product prices.
+    policy_fee = 0
+    if kind in (NativeFeeKind.TRANSFER_FUNGIBLE, NativeFeeKind.MINT_FUNGIBLE, NativeFeeKind.BURN_FUNGIBLE):
+        work_units = config.gas_fee_transfer
+    elif kind in (
+        NativeFeeKind.TRANSFER_NON_FUNGIBLE,
+        NativeFeeKind.MINT_NON_FUNGIBLE,
+        NativeFeeKind.BURN_NON_FUNGIBLE,
+    ):
+        work_units = config.gas_fee_transfer * count
+    elif kind is NativeFeeKind.CREATE_TOKEN:
+        # Symbol price halves per character after the first; shift is validated by the chain
+        # against max_token_symbol_length, mirror that bound here.
+        shift = _symbol_shift(symbol_length, config.max_token_symbol_length, "symbol_length")
+        if v2:
+            work_units = 0
+            policy_fee = config.policy_fee_create_token_base
+            if symbol_length > 0:
+                policy_fee += config.policy_fee_create_token_symbol >> shift
+        else:
+            work_units = config.gas_fee_create_token_base
+            if symbol_length > 0:
+                work_units += config.gas_fee_create_token_symbol >> shift
+    elif kind is NativeFeeKind.CREATE_TOKEN_SERIES:
+        work_units = 0 if v2 else config.gas_fee_create_token_series
+        policy_fee = config.policy_fee_create_token_series if v2 else 0
+    elif kind is NativeFeeKind.REGISTER_NAME:
+        if name_length <= 0:
+            raise ValueError("name_length is required for REGISTER_NAME")
+        shift = _symbol_shift(name_length, config.max_name_length, "name_length")
+        work_units = 0 if v2 else config.gas_fee_register_name >> shift
+        policy_fee = config.policy_fee_register_name >> shift if v2 else 0
+    elif kind is NativeFeeKind.SCRIPT:
+        work_units = script_units_allowance
+    else:
+        raise ValueError(f"unknown fee kind: {kind}")
+
+    rows = fresh_rows if fresh_rows >= 0 else _default_fresh_rows(kind, count, rom_ram_bytes)
+    envelope = envelope_bytes if envelope_bytes > 0 else _default_envelope_bytes(kind, count, rom_ram_bytes)
+    # Native TxTypes store no events in the block; script txs do (Notify), so budget some.
+    event_bytes = 512 if kind is NativeFeeKind.SCRIPT else 0
+
+    if v2:
+        # v2 formula: bill = mul_shift(work_units + block_data*25) + policy_fee, floored at
+        # minimum_gas_bill. block_data = envelope + events + net storage quanta (quanta are
+        # added to the byte count by the chain formula).
+        expected = _bill_v2(work_units, envelope, event_bytes, rows, policy_fee, config)
+        # Offer headroom: +25% over the padded bill covers witness-size wiggle and event
+        # variance; deterministic and always refunded down to the actual bill.
+        padded = _bill_v2(work_units, _round_up(envelope, 128), event_bytes, rows, policy_fee, config)
+        max_gas = min(padded + padded // 4, _U64_MAX)
+        max_gas = max(max_gas, config.minimum_gas_bill, config.minimum_gas_offer)
+    else:
+        # v1 formula: bill = (work_units * mult >> shift) + block_data * gas_fee_per_byte where
+        # block_data = payload + events + net storage quanta (no envelope term, no floor).
+        work = _mul_shift(work_units, config.fee_multiplier, config.fee_shift)
+        block_data = payload_bytes + event_bytes + rows
+        expected = min(work + block_data * config.gas_fee_per_byte, _U64_MAX)
+        # Offer shape mirrors the validator's own test-agent stdFee: a 2x minimum-offer pad
+        # plus a flat 1 KiB block-data allowance on top of the work term.
+        byte_allowance = max(block_data, 1024)
+        max_gas = min(config.minimum_gas_offer * 2 + work + byte_allowance * config.gas_fee_per_byte, _U64_MAX)
+
+    return NativeFeeEstimate(
+        max_gas=max_gas,
+        max_data=min(rows * config.data_escrow_per_row, _U64_MAX),
+        expected_gas_bill=expected,
+    )
+
+
+def _bill_v2(work_units: int, envelope: int, event_bytes: int, rows: int, policy_fee: int, config: GasConfig) -> int:
+    block_data = envelope + event_bytes + rows
+    byte_units = block_data * GAS_MODEL_V2_UNITS_PER_BLOCK_DATA_BYTE
+    bill = _mul_shift(work_units + byte_units, config.fee_multiplier, config.fee_shift) + policy_fee
+    return max(min(bill, _U64_MAX), config.minimum_gas_bill)
+
+
+def _mul_shift(value: int, multiplier: int, shift: int) -> int:
+    # Chain fee scaling: (value * fee_multiplier) >> fee_shift, saturating to u64. Matches the
+    # validator's v2 MulShiftSaturateU64 (python ints are unbounded, so only the clamp is
+    # needed); for sane v1 configs it is also bit-identical to the v1 math.
+    if shift >= 64:
+        return 0  # the chain clamps oversized shifts to a zero delta
+    return min((value * multiplier) >> shift, _U64_MAX)
+
+
+def _symbol_shift(length: int, max_length: int, param_name: str) -> int:
+    if length < 0:
+        raise ValueError(f"{param_name} must not be negative")
+    if length == 0:
+        return 0
+    shift = length - 1
+    # The chain asserts shift < max_name_length / max_token_symbol_length; a longer input could
+    # never be admitted, so reject it here instead of quoting a fee for an impossible tx.
+    if max_length and shift >= max_length:
+        raise ValueError(f"{param_name} {length} exceeds the chain maximum {max_length}")
+    return shift
+
+
+def _default_fresh_rows(kind: NativeFeeKind, count: int, rom_ram_bytes: int) -> int:
+    # Worst-case paid rows the operation can create (drives max_data). Refund-only operations
+    # (burns) need no escrow allowance: refunds never require max_data budget.
+    if kind in (NativeFeeKind.TRANSFER_FUNGIBLE, NativeFeeKind.MINT_FUNGIBLE):
+        return 1  # recipient balance row may be fresh (SOUL/KCAL rows would be free)
+    if kind is NativeFeeKind.TRANSFER_NON_FUNGIBLE:
+        # Per instance the chain deletes the sender's NFT-lookup row and creates the
+        # recipient's (creation escrows at the current price, the deletion refunds the old
+        # row's own deposit) + possibly a fresh recipient balance row.
+        return count + 1
+    if kind is NativeFeeKind.MINT_NON_FUNGIBLE:
+        # Per instance: owner row + lookup row + the instance state rows holding ROM/RAM
+        # (1 KiB quanta), plus possibly a fresh recipient balance row.
+        return count * (2 + (rom_ram_bytes + 1023) // 1024) + 1
+    if kind in (NativeFeeKind.BURN_FUNGIBLE, NativeFeeKind.BURN_NON_FUNGIBLE):
+        return 0
+    if kind is NativeFeeKind.CREATE_TOKEN:
+        return 8  # token info + symbol lookup + supply/config rows, metadata-dependent
+    if kind is NativeFeeKind.CREATE_TOKEN_SERIES:
+        return 4
+    if kind is NativeFeeKind.REGISTER_NAME:
+        return 2  # name->address and address->name rows
+    return 4
+
+
+def _default_envelope_bytes(kind: NativeFeeKind, count: int, rom_ram_bytes: int) -> int:
+    # Conservative single-witness envelope defaults per kind; used only when the caller did not
+    # measure the real signed size. Generous by design: under v2 an oversized estimate only
+    # raises the refunded offer, never the settled bill.
+    if kind in (
+        NativeFeeKind.TRANSFER_FUNGIBLE,
+        NativeFeeKind.MINT_FUNGIBLE,
+        NativeFeeKind.BURN_FUNGIBLE,
+        NativeFeeKind.REGISTER_NAME,
+    ):
+        return 512
+    if kind in (NativeFeeKind.TRANSFER_NON_FUNGIBLE, NativeFeeKind.BURN_NON_FUNGIBLE):
+        return 512 + 8 * count  # 8 bytes per carried instance id
+    if kind is NativeFeeKind.MINT_NON_FUNGIBLE:
+        return 512 + count * (64 + rom_ram_bytes)  # ROM/RAM ride the envelope
+    if kind is NativeFeeKind.CREATE_TOKEN:
+        return 4096  # token metadata (icons, descriptions) dominates
+    if kind is NativeFeeKind.CREATE_TOKEN_SERIES:
+        return 2048
+    return 1024
+
+
+def _round_up(value: int, step: int) -> int:
+    remainder = value % step
+    return value if remainder == 0 else value + (step - remainder)
 
 
 def now_unix_millis() -> int:
