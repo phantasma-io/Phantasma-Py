@@ -14,6 +14,7 @@ import requests
 from .carbon import (
     Bytes32,
     GasConfig,
+    NativeFeeEstimate,
     SignedTxMsg,
     TxMsg,
     parse_create_token_result,
@@ -296,6 +297,51 @@ def _parse_u64(value: str | None, field_name: str) -> int:
         raise RPCError(f"getGasConfig field {field_name} is missing or empty")
     if not value.isdigit():
         raise RPCError(f"getGasConfig field {field_name} is not a decimal integer: {value}")
+    return int(value)
+
+
+@dataclass(slots=True)
+class EstimateTransactionResult:
+    """estimateTransaction response: the exact fee bill of one serialized transaction envelope.
+
+    Computed by dry-running the envelope against current chain state (gas-model-v2 Tier-2).
+    64-bit amounts ride as decimal strings (they can exceed the 2^53 precision of JSON numbers).
+    Amounts are kcal-base atoms of the gas token; escrow amounts are data-token atoms. Service
+    availability (routing, gas model, node budget) surfaces as a standard RPC error, never through
+    this shape.
+    """
+
+    would_abort: bool = False
+    abort_reason: str = ""
+    gas_bill_kcal_base: str | None = None
+    data_rows: str | None = None
+    data_escrow_atoms: str | None = None
+    data_refund_atoms: str | None = None
+    recommended_max_gas: str | None = None
+    recommended_max_data: str | None = None
+
+    def to_fee_estimate(self) -> NativeFeeEstimate:
+        """Convert a completed estimate into the Tier-1 NativeFeeEstimate.
+
+        max_gas/max_data are the recommended ceilings and expected_gas_bill is the exact settled
+        bill, so wallet code consumes both tiers identically. Raises RPCError when would_abort is
+        set - an aborted simulation has no recommendations (retry with a higher offer or fall back
+        to the Tier-1 estimator) - and on malformed numeric strings.
+        """
+        if self.would_abort:
+            raise RPCError(f"estimateTransaction reported the transaction would abort: {self.abort_reason}")
+        return NativeFeeEstimate(
+            max_gas=_parse_estimate_u64(self.recommended_max_gas, "recommendedMaxGas"),
+            max_data=_parse_estimate_u64(self.recommended_max_data, "recommendedMaxData"),
+            expected_gas_bill=_parse_estimate_u64(self.gas_bill_kcal_base, "gasBillKcalBase"),
+        )
+
+
+def _parse_estimate_u64(value: str | None, field_name: str) -> int:
+    if value is None or value == "":
+        raise RPCError(f"estimateTransaction field {field_name} is missing or empty")
+    if not value.isdigit():
+        raise RPCError(f"estimateTransaction field {field_name} is not a decimal integer: {value}")
     return int(value)
 
 
@@ -959,6 +1005,17 @@ class PhantasmaRPC:
         GasConfigResult.to_gas_config() into estimate_native_fee() for Tier-1 fee estimates.
         """
         return _decode_dataclass(GasConfigResult, self.call("getGasConfig"))
+
+    def estimate_transaction(self, tx_data: str) -> EstimateTransactionResult:
+        """Dry-run a serialized transaction envelope for its exact fee bill (gas-model-v2 Tier-2).
+
+        Returns the settled bill plus recommended maxGas/maxData ceilings. Signatures inside the
+        envelope may be zero-filled dummies of the correct length - the simulation skips signature
+        checks, and dummies preserve the exact envelope byte length the bill depends on. Until the
+        estimate service is launched this raises a standard RPCError; use estimate_native_fee()
+        with get_gas_config() as the fallback.
+        """
+        return _decode_dataclass(EstimateTransactionResult, self.call("estimateTransaction", tx_data))
 
     def get_nexus(self, *, extended: bool = True) -> NexusResult:
         return _decode_dataclass(NexusResult, self.call("getNexus", extended))
