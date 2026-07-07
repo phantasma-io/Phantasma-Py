@@ -444,6 +444,11 @@ class BlockResult:
     protocol: int = 0
     txs: list[TransactionResult] = field(default_factory=list)
     validator_address: str = ""
+    # Fee payout address stamped by the block producer inside the hashed block input. Present on
+    # gas-model-v2 blocks only, None on earlier blocks. Distinct from validator_address (the
+    # consensus-log leader): usually equal today, but a configurable payout address is a planned
+    # compatible extension, so consumers must not assume equality.
+    producer_address: str | None = None
     reward: str = "0"
     events: list[EventResult] | None = None
     oracles: list[OracleResult] | None = None

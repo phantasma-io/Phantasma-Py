@@ -308,6 +308,26 @@ def test_rpc_dtos_decode_current_response_shapes_without_stale_aliases() -> None
     assert block.events is None
     assert block.oracles is None
     assert block.txs[0].carbon_tx_type == 9
+    # Pre-gas-model-v2 block: the producerAddress key is omitted -> producer_address stays None.
+    assert block.producer_address is None
+
+    # Gas-model-v2 block: producerAddress is present and decodes verbatim; distinct in meaning
+    # from validator_address (the consensus-log leader).
+    v2_block = PhantasmaRPC(
+        "http://localhost/rpc",
+        session=FakeSession(
+            {
+                "hash": "BLOCK",
+                "height": 457,
+                "txs": [],
+                "reward": "0",
+                "validatorAddress": "Pvalidator",
+                "producerAddress": "Pproducer",
+            }
+        ),
+    ).get_block_by_hash("BLOCK")
+    assert v2_block.validator_address == "Pvalidator"
+    assert v2_block.producer_address == "Pproducer"
 
     token_payload = {
         "symbol": "CROWN",
