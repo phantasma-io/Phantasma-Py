@@ -1,3 +1,5 @@
+import warnings
+
 import pytest
 
 from phantasma_py.errors import RPCError
@@ -112,6 +114,12 @@ class RawSession:
         self, url: str, *, json: dict, timeout: float, stream: bool = False, headers: dict | None = None
     ) -> RawResponse:
         return RawResponse(self.body)
+
+
+def _without_deprecation(call):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return call()
 
 
 class SpyRPC(PhantasmaRPC):
@@ -581,7 +589,14 @@ def test_rpc_wrapper_parameter_shapes_cover_public_alias_surface() -> None:
             "getTokens",
             (False, "Pabc", "User"),
         ),
-        (SpyRPC({}), lambda rpc: rpc.get_token_data("ART", "1"), "getTokenData", ("ART", "1")),
+        # Deprecated call kept in the parameter-shape matrix on purpose; the migration warning is the
+        # point of that surface, not a defect in this test.
+        (
+            SpyRPC({}),
+            lambda rpc: _without_deprecation(lambda: rpc.get_token_data("ART", "1")),
+            "getTokenData",
+            ("ART", "1"),
+        ),
         (
             SpyRPC({}),
             lambda rpc: rpc.get_token_balance_with_address_type("Pabc", "SOUL", "main", False, "User"),

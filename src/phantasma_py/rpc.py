@@ -1105,6 +1105,8 @@ class PhantasmaRPC:
     def get_organizations(
         self, *, page_size: int = 10, cursor: str = "", include_member_count: bool = False
     ) -> CursorPaginatedResult[list[OrganizationResult]]:
+        """The ``extended`` flag is deprecated server-side and slated for removal."""
+        """The ``extended`` flag is deprecated server-side and slated for removal."""
         """``page_size`` must be 1..100; the node rejects anything outside that range."""
         return _decode_cursor(
             OrganizationResult, self.call("getOrganizations", page_size, cursor, include_member_count)
@@ -1144,6 +1146,7 @@ class PhantasmaRPC:
     def get_tokens(
         self, *, extended: bool = True, owner_address: str | None = None, address_type: str | None = None
     ) -> list[TokenResult]:
+        """The ``extended`` flag is deprecated server-side and slated for removal."""
         params = _optional_params(extended, owner_address, address_type)
         return _decode_list(TokenResult, self.call("getTokens", *params))
 
@@ -1159,6 +1162,17 @@ class PhantasmaRPC:
         return {token.symbol: token for token in self.get_tokens(extended=extended)}
 
     def get_token_data(self, symbol: str, nft_id: str) -> TokenDataResult:
+        """Return data of a non-fungible token.
+
+        .. deprecated::
+            The node serves this as a strict subset of ``getNFT`` - same response, with property
+            loading forced off - so :meth:`get_nft` covers it entirely.
+        """
+        warnings.warn(
+            "get_token_data is deprecated; use get_nft (getTokenData is a strict subset of getNFT)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return _decode_dataclass(TokenDataResult, self.call("getTokenData", symbol, nft_id))
 
     def get_token_balance(
