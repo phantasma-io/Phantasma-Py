@@ -2,6 +2,7 @@ import pytest
 
 from phantasma_py.errors import RPCError
 from phantasma_py.rpc import (
+    AccountInfoResult,
     AccountResult,
     ArchiveResult,
     BlockResult,
@@ -123,6 +124,9 @@ class SpyRPC(PhantasmaRPC):
         return self.result
 
 
+# Exercises the deprecated account surface on purpose; the migration warning is the point of
+# that surface, not a defect in this test.
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_rpc_wraps_params_and_accepts_string_response_ids() -> None:
     # Current RPC may echo ids as strings; the client should accept that and still validate mismatches.
     session = FakeSession({"address": "Pabc", "balances": [{"symbol": "SOUL", "amount": "123", "decimals": 8}]})
@@ -507,6 +511,9 @@ def test_rpc_alias_methods_preserve_reference_parameter_order() -> None:
     assert account_session.requests[-1]["json"]["params"] == ["Pabc", "ART", 7, 8, 10, "", True, False, "User"]
 
 
+# Exercises the deprecated account surface on purpose; the migration warning is the point of
+# that surface, not a defect in this test.
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_rpc_wrapper_parameter_shapes_cover_public_alias_surface() -> None:
     cases = [
         (SpyRPC([]), lambda rpc: rpc.get_platforms(), "getPlatforms", ()),
@@ -667,3 +674,50 @@ def test_rpc_surfaces_http_status_for_id_less_rejection() -> None:
     rpc = PhantasmaRPC("http://localhost/rpc", session=ErrorSession({"error": "API key required"}, status_code=401))
     with pytest.raises(RPCError, match="API key required"):
         rpc.get_version()
+
+
+def test_get_account_info_sends_only_the_account() -> None:
+    # The endpoint exists so wallets can refresh at a cost independent of account size; sending an
+    # extra argument would change which node overload is dispatched.
+    rpc = SpyRPC({"address": "P2Kaccount", "name": "myname", "stake": {"amount": "1", "time": 2, "unclaimed": "3"}})
+
+    rpc.get_account_info("P2Kaccount")
+
+    assert rpc.calls == [("getAccountInfo", ("P2Kaccount",))]
+
+
+def test_get_account_info_decodes_the_stake_object() -> None:
+    # getAccountInfo names the staking object "stake", while getAccount carries the same object under
+    # "stakes" and uses "stake" for a deprecated flat scalar. Binding the wrong one would decode into
+    # a default (zeroed) stake rather than fail, so the exact wire shape is pinned here.
+    session = FakeSession(
+        {
+            "address": "P2Kaccount",
+            "name": "myname",
+            "stake": {"amount": "1500000000000", "time": 1743520000, "unclaimed": "42000000000"},
+        }
+    )
+    rpc = PhantasmaRPC("http://localhost/rpc", session=session)
+
+    info = rpc.get_account_info("P2Kaccount")
+
+    assert isinstance(info, AccountInfoResult)
+    assert info.address == "P2Kaccount"
+    assert info.name == "myname"
+    assert info.stake.amount == "1500000000000"
+    assert info.stake.time == 1743520000
+    assert info.stake.unclaimed == "42000000000"
+    assert session.requests[0]["json"]["params"] == ["P2Kaccount"]
+
+
+def test_legacy_account_calls_warn_about_the_capped_id_lists() -> None:
+    # The node truncates balances[].ids at 10000 while amount keeps the true count, so callers must be
+    # told to migrate rather than silently consume a partial list.
+    rpc = SpyRPC({"address": "Pabc"})
+
+    with pytest.warns(DeprecationWarning, match="get_account_info"):
+        rpc.get_account("Pabc")
+
+    rpc_many = SpyRPC([{"address": "Pabc"}])
+    with pytest.warns(DeprecationWarning, match="get_account_info"):
+        rpc_many.get_accounts(["Pabc"])

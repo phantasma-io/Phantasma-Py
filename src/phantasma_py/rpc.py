@@ -131,6 +131,24 @@ class StorageResult:
 
 
 @dataclass(slots=True)
+class AccountInfoResult:
+    """Lightweight account overview returned by ``getAccountInfo``.
+
+    Carries no balances and no NFT id lists, so fetching it costs the same regardless of how much an
+    address holds - unlike :class:`AccountResult`, whose ``balances[].ids`` embed every owned NFT id
+    and are capped server-side at 10000 entries per token. Balances and NFTs are fetched separately
+    through the cursor-paginated account endpoints.
+
+    Note the wire name of the staking object differs from :class:`AccountResult`, which carries the
+    same object under ``stakes`` and uses ``stake`` for a deprecated flat scalar.
+    """
+
+    address: str = ""
+    name: str = ""
+    stake: StakeResult = field(default_factory=StakeResult)
+
+
+@dataclass(slots=True)
 class AccountResult:
     address: str = ""
     name: str = ""
@@ -901,6 +919,22 @@ class PhantasmaRPC:
 
     def get_platforms(self) -> list[PlatformResult]:
         return _decode_list(PlatformResult, self.call("getPlatforms"))
+
+    def get_account_info(
+        self,
+        address: str,
+        *,
+        check_address_reserved_byte: bool | None = None,
+        address_type: str | None = None,
+    ) -> AccountInfoResult:
+        """Return the account name and staking info for ``address``.
+
+        Cost is independent of how much the address holds, which makes this the call to use in
+        wallet refresh loops; balances and NFTs are fetched separately through the cursor-paginated
+        account endpoints.
+        """
+        params = _optional_params(address, check_address_reserved_byte, address_type)
+        return _decode_dataclass(AccountInfoResult, self.call("getAccountInfo", *params))
 
     def get_account(
         self,
