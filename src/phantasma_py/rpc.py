@@ -1105,6 +1105,7 @@ class PhantasmaRPC:
     def get_organizations(
         self, *, page_size: int = 10, cursor: str = "", include_member_count: bool = False
     ) -> CursorPaginatedResult[list[OrganizationResult]]:
+        """``page_size`` must be 1..100; the node rejects anything outside that range."""
         return _decode_cursor(
             OrganizationResult, self.call("getOrganizations", page_size, cursor, include_member_count)
         )
@@ -1112,6 +1113,7 @@ class PhantasmaRPC:
     def get_organization_members(
         self, name: str, *, page_size: int = 10, cursor: str = "", include_member_time: bool = True
     ) -> CursorPaginatedResult[list[OrganizationMemberResult]]:
+        """``page_size`` must be 1..100; the node rejects anything outside that range."""
         return _decode_cursor(
             OrganizationMemberResult,
             self.call("getOrganizationMembers", name, page_size, cursor, include_member_time),
@@ -1190,6 +1192,7 @@ class PhantasmaRPC:
     def get_token_series(
         self, symbol: str, carbon_token_id: int = 0, page_size: int = 100, cursor: str = ""
     ) -> CursorPaginatedResult[list[TokenSeriesResult]]:
+        """``page_size`` must be 1..100; the node rejects anything outside that range."""
         return _decode_cursor(
             TokenSeriesResult, self.call("getTokenSeries", symbol, carbon_token_id, page_size, cursor)
         )
@@ -1211,6 +1214,7 @@ class PhantasmaRPC:
         cursor: str = "",
         extended: bool = True,
     ) -> CursorPaginatedResult[list[TokenDataResult]]:
+        """``page_size`` must be 1..100, or 1..50 when ``extended`` is true; the node rejects anything else."""
         return _decode_cursor(
             TokenDataResult,
             self.call("getTokenNFTs", carbon_token_id, carbon_series_id, page_size, cursor, extended, series_id),
@@ -1245,6 +1249,7 @@ class PhantasmaRPC:
         check_address_reserved_byte: bool = False,
         address_type: str | None = None,
     ) -> CursorPaginatedResult[list[BalanceResult]]:
+        """``page_size`` must be 1..100; the node rejects anything outside that range."""
         params = _optional_params(
             account, token_symbol, carbon_token_id, page_size, cursor, check_address_reserved_byte, address_type
         )
@@ -1283,6 +1288,7 @@ class PhantasmaRPC:
         check_address_reserved_byte: bool = False,
         address_type: str | None = None,
     ) -> CursorPaginatedResult[list[TokenDataResult]]:
+        """``page_size`` must be 1..100, or 1..50 when ``extended`` is true; the node rejects anything else."""
         params = _optional_params(
             account,
             token_symbol,
@@ -1331,6 +1337,7 @@ class PhantasmaRPC:
         check_address_reserved_byte: bool = False,
         address_type: str | None = None,
     ) -> CursorPaginatedResult[list[TokenResult]]:
+        """``page_size`` must be 1..100; the node rejects anything outside that range."""
         params = _optional_params(
             account, token_symbol, carbon_token_id, page_size, cursor, check_address_reserved_byte, address_type
         )
@@ -1367,6 +1374,7 @@ class PhantasmaRPC:
         check_address_reserved_byte: bool = False,
         address_type: str | None = None,
     ) -> CursorPaginatedResult[list[TokenSeriesResult]]:
+        """``page_size`` must be 1..100; the node rejects anything outside that range."""
         params = _optional_params(
             account, token_symbol, carbon_token_id, page_size, cursor, check_address_reserved_byte, address_type
         )
