@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import time
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, Generic, Protocol, TypeVar, cast, get_args, get_origin, get_type_hints
@@ -944,6 +945,20 @@ class PhantasmaRPC:
         check_address_reserved_byte: bool | None = None,
         address_type: str | None = None,
     ) -> AccountResult:
+        """Return full account state including balances.
+
+        .. deprecated::
+            The response embeds every NFT id the address owns, so it grows without bound with the
+            size of the account; the node caps each ``balances[].ids`` list at 10000 entries while
+            ``balances[].amount`` keeps the true count, meaning the list is silently partial for
+            large holders. Use :meth:`get_account_info` together with
+            :meth:`get_account_fungible_tokens` and :meth:`get_account_nfts`.
+        """
+        warnings.warn(
+            "get_account is deprecated; use get_account_info with get_account_fungible_tokens/get_account_nfts",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         params = _optional_params(address, extended, check_address_reserved_byte, address_type)
         return _decode_dataclass(AccountResult, self.call("getAccount", *params))
 
@@ -955,11 +970,24 @@ class PhantasmaRPC:
         check_address_reserved_byte: bool | None = None,
         address_type: str | None = None,
     ) -> list[AccountResult]:
+        """Return full account state for several addresses.
+
+        .. deprecated::
+            Same unbounded-response problem as :meth:`get_account`, multiplied by the number of
+            addresses in one call. Use :meth:`get_account_info` together with
+            :meth:`get_account_fungible_tokens` and :meth:`get_account_nfts`.
+        """
+        warnings.warn(
+            "get_accounts is deprecated; use get_account_info with get_account_fungible_tokens/get_account_nfts",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         text = addresses if isinstance(addresses, str) else ",".join(addresses)
         params = _optional_params(text, extended, check_address_reserved_byte, address_type)
         return _decode_list(AccountResult, self.call("getAccounts", *params))
 
     def get_accounts_text(self, addresses: str, *, extended: bool = False) -> list[AccountResult]:
+        """Deprecated alias for :meth:`get_accounts` taking a comma-separated address list."""
         return self.get_accounts(addresses, extended=extended)
 
     def get_account_with_address_type(
