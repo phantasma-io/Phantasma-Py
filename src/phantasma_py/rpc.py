@@ -937,6 +937,28 @@ class PhantasmaRPC:
         params = _optional_params(address, check_address_reserved_byte, address_type)
         return _decode_dataclass(AccountInfoResult, self.call("getAccountInfo", *params))
 
+    def get_account_infos(
+        self,
+        addresses: Sequence[str],
+        *,
+        check_address_reserved_byte: bool | None = None,
+        address_type: str | None = None,
+    ) -> list[AccountInfoResult]:
+        """Return account overviews for a batch of up to 100 addresses in one call.
+
+        Batch counterpart of :meth:`get_account_info` with the same per-account record: the node
+        answers every address from a single state snapshot and returns results in request order.
+        The addresses travel as a native JSON array parameter; a malformed address rejects the
+        whole batch.
+        """
+        if isinstance(addresses, str):
+            # A bare string is a Sequence[str] of characters and would silently fan out into
+            # one-character "addresses"; the server would reject them, but the mistake deserves a
+            # clear local error instead of a confusing remote one.
+            raise TypeError("addresses must be a sequence of addresses, not a single string")
+        params = _optional_params(list(addresses), check_address_reserved_byte, address_type)
+        return _decode_list(AccountInfoResult, self.call("getAccountInfos", *params))
+
     def get_account(
         self,
         address: str,

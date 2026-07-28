@@ -725,6 +725,55 @@ def test_get_account_info_decodes_the_stake_object() -> None:
     assert session.requests[0]["json"]["params"] == ["P2Kaccount"]
 
 
+def test_get_account_infos_sends_a_native_address_array() -> None:
+    # The batch contract is a NATIVE JSON array parameter (Solana getMultipleAccounts style), not
+    # the comma-joined string the deprecated getAccounts wire used.
+    rpc = SpyRPC([])
+
+    rpc.get_account_infos(["P2Kaccount1", "P2Kaccount2"])
+
+    assert rpc.calls == [("getAccountInfos", (["P2Kaccount1", "P2Kaccount2"],))]
+
+
+def test_get_account_infos_decodes_elements_in_request_order() -> None:
+    # Per-element decode carries the same stake-vs-stakes wire nuance as get_account_info, and the
+    # request order must survive the round-trip; distinct values make a mix-up visible.
+    session = FakeSession(
+        [
+            {"address": "P2Kaccount1", "name": "anonymous", "stake": {"amount": "0", "time": 0, "unclaimed": "0"}},
+            {
+                "address": "P2Kaccount2",
+                "name": "myname",
+                "stake": {"amount": "1500000000000", "time": 1743520000, "unclaimed": "42000000000"},
+            },
+        ]
+    )
+    rpc = PhantasmaRPC("http://localhost/rpc", session=session)
+
+    infos = rpc.get_account_infos(["P2Kaccount1", "P2Kaccount2"])
+
+    assert [type(info) for info in infos] == [AccountInfoResult, AccountInfoResult]
+    assert infos[0].address == "P2Kaccount1"
+    assert infos[0].name == "anonymous"
+    assert infos[0].stake.amount == "0"
+    assert infos[1].address == "P2Kaccount2"
+    assert infos[1].name == "myname"
+    assert infos[1].stake.amount == "1500000000000"
+    assert infos[1].stake.unclaimed == "42000000000"
+    assert session.requests[0]["json"]["params"] == [["P2Kaccount1", "P2Kaccount2"]]
+
+
+def test_get_account_infos_rejects_a_bare_string() -> None:
+    # A bare string would fan out into one-character "addresses"; the mistake must fail locally and
+    # clearly, not as a confusing server-side rejection.
+    rpc = SpyRPC([])
+
+    with pytest.raises(TypeError, match="sequence of addresses"):
+        rpc.get_account_infos("P2Kaccount")  # type: ignore[arg-type]
+
+    assert rpc.calls == []
+
+
 def test_legacy_account_calls_warn_about_the_capped_id_lists() -> None:
     # The node truncates balances[].ids at 10000 while amount keeps the true count, so callers must be
     # told to migrate rather than silently consume a partial list.
