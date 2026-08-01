@@ -12,6 +12,7 @@ from typing import Any, Generic, Protocol, TypeVar, cast, get_args, get_origin, 
 
 import requests
 
+from ._wire_shapes import snake_to_camel
 from .carbon import (
     Bytes32,
     GasConfig,
@@ -25,8 +26,10 @@ from .carbon import (
 )
 from .crypto import PhantasmaKeys
 from .errors import RPCError
+from .extended_events import EventExResult
 from .transaction import Transaction, tx_state_is_fault, tx_state_is_success
 from .vm import VMObject
+from .vm_value import VmValue
 
 T = TypeVar("T")
 
@@ -412,14 +415,6 @@ class SignatureResult:
 
 
 @dataclass(slots=True)
-class EventExResult:
-    address: str = ""
-    contract: str = ""
-    kind: str = ""
-    data: Any | None = None
-
-
-@dataclass(slots=True)
 class TransactionResult:
     hash: str = ""
     chain_address: str = ""
@@ -476,7 +471,10 @@ class BlockResult:
 @dataclass(slots=True)
 class TokenPropertyResult:
     key: str = ""
-    value: str = ""
+    # The decoded VM value. Scalars carry their content in ``value.text``; VM structs and arrays
+    # keep their shape instead of being packed into a JSON string, which is what this field used to
+    # hold before the 2026-08 node series.
+    value: VmValue = field(default_factory=VmValue)
 
 
 @dataclass(slots=True)
@@ -1623,7 +1621,7 @@ def _decode_dataclass(cls: type[T], raw: Any) -> T:
     kwargs: dict[str, Any] = {}
     type_hints = get_type_hints(cls)
     for field_info in fields(cls):
-        wire_key = _snake_to_camel(field_info.name)
+        wire_key = snake_to_camel(field_info.name)
         if field_info.name in raw:
             value = raw[field_info.name]
         elif wire_key in raw:
@@ -1637,6 +1635,11 @@ def _decode_dataclass(cls: type[T], raw: Any) -> T:
 def _decode_value(target_type: Any, value: Any) -> Any:
     origin = get_origin(target_type)
     args = get_args(target_type)
+    # A type that decodes itself. Needed where the generic path cannot work: a VM value is a union
+    # of three JSON shapes rather than a fixed object, and an extended event has to read its kind
+    # before it can type its data.
+    if isinstance(target_type, type) and hasattr(target_type, "from_wire"):
+        return target_type.from_wire(value)
     if origin is list and args:
         return [_decode_value(args[0], item) for item in (value or [])]
     if origin is type(None):
@@ -1649,11 +1652,6 @@ def _decode_value(target_type: Any, value: Any) -> Any:
     if target_type is Bytes32:
         return Bytes32(value)
     return value
-
-
-def _snake_to_camel(value: str) -> str:
-    parts = value.split("_")
-    return parts[0] + "".join(part[:1].upper() + part[1:] for part in parts[1:])
 
 
 def _optional_int(value: Any) -> int | None:

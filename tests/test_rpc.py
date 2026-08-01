@@ -3,6 +3,7 @@ import warnings
 import pytest
 
 from phantasma_py.errors import RPCError
+from phantasma_py.extended_events import UnknownEventData
 from phantasma_py.rpc import (
     AccountInfoResult,
     AccountResult,
@@ -299,7 +300,9 @@ def test_rpc_dtos_decode_current_response_shapes_without_stale_aliases() -> None
     assert tx.gas_price == "1"
     assert tx.gas_limit == "100000000"
     assert tx.events[0].name == "GasEscrow"
-    assert tx.extended_events[0].data == {"id": "7"}
+    # "Order" is not an extended-event kind the node emits data for, so the payload is preserved
+    # verbatim instead of being forced into a modeled shape.
+    assert tx.extended_events[0].data == UnknownEventData(data={"id": "7"})
     assert tx.signatures[0].kind == "Ed25519"
     assert tx.signatures[0].data == "AA"
 
@@ -374,7 +377,7 @@ def test_rpc_dtos_decode_current_response_shapes_without_stale_aliases() -> None
     assert stale_decoded.carbon_id == ""
     assert stale_decoded.metadata is not None
     assert stale_decoded.metadata[0].key == ""
-    assert stale_decoded.metadata[0].value == ""
+    assert stale_decoded.metadata[0].value.as_text() == ""
 
     stale_metadata = dict(token_payload)
     stale_metadata["metadata"] = [{"Key": "name", "Value": "Crown"}]
@@ -383,7 +386,7 @@ def test_rpc_dtos_decode_current_response_shapes_without_stale_aliases() -> None
     )
     assert stale_metadata_decoded.metadata is not None
     assert stale_metadata_decoded.metadata[0].key == ""
-    assert stale_metadata_decoded.metadata[0].value == ""
+    assert stale_metadata_decoded.metadata[0].value.as_text() == ""
 
     nft_payload = {
         "id": "114421",
@@ -406,7 +409,7 @@ def test_rpc_dtos_decode_current_response_shapes_without_stale_aliases() -> None
     assert nft.id == "114421"
     assert nft.series == "0"
     assert nft.carbon_series_id == "1"
-    assert nft.properties[0].value == "Crown #1"
+    assert nft.properties[0].value.as_text() == "Crown #1"
 
     stale_nft = dict(nft_payload)
     stale_nft["ID"] = stale_nft.pop("id")
